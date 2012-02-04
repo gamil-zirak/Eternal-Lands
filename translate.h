@@ -303,6 +303,8 @@ extern char
 		/*hud.c*/
 		no_open_on_trade[100], 
 		stats_scroll_help_str[100],
+		remove_bar_message_str[50],
+		cm_action_points_str[30],
 		/*ignore.c*/
 		no_ignores_str[50],
 		ignores_str[50],
@@ -337,6 +339,8 @@ extern char
 		double_click_clear_str[50],
 		recipe_select_str[50],
 		recipe_load_str[50],
+		recipe_find_str[50],
+		recipe_during_find_str[50],
 		recipe_show_hide_str[70],
 		recipe_save_str[70],
 		/*knowledge.c*/

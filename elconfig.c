@@ -283,6 +283,7 @@ void change_var(int * var)
 	*var= !*var;
 }
 
+#ifndef MAP_EDITOR
 static void change_show_action_bar(int * var)
 {
 	*var= !*var;
@@ -290,7 +291,6 @@ static void change_show_action_bar(int * var)
 		init_stats_display();
 }
 
-#ifndef MAP_EDITOR
 void change_minimap_scale(float * var, float * value)
 {
 	int shown = 0;
@@ -1746,6 +1746,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_INT,"mouse_limit","lmouse",&mouse_limit,change_int,15,"Mouse Limit","You can increase the mouse sensitivity and cursor changing by adjusting this number to lower numbers, but usually the FPS will drop as well!",CONTROLS,1,INT_MAX);
 #ifdef OSX
 	add_var(OPT_BOOL,"osx_right_mouse_cam","osxrightmousecam", &osx_right_mouse_cam, change_var,0,"Rotate Camera with right mouse button", "Allows to rotate the camera by pressing the right mouse button and dragging the cursor", CONTROLS);
+	add_var(OPT_BOOL,"emulate_3_button_mouse","emulate3buttonmouse", &emulate3buttonmouse, change_var,0,"Emulate a 3 Button Mouse", "If you have a 1 Button Mouse you can use <apple> click to emulate a rightclick. Needs client restart.", CONTROLS);
 #endif // OSX
 #ifdef NEW_CURSOR
 	add_var(OPT_BOOL,"sdl_cursors","sdl_cursors", &sdl_cursors, change_sdl_cursor,1,"Old Style Pointers", "Use default SDL cursor.", CONTROLS);
@@ -1775,6 +1776,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"relocate_quickbar", "requick", &quickbar_relocatable, change_quickbar_relocatable, 0,"Relocate Quickbar","Set whether you can move the quickbar",HUD);
 	add_var(OPT_INT,"num_quickbar_slots","numqbslots",&num_quickbar_slots,change_int,6,"Number Of Quickbar Slots","Set the number of quickbar slots displayed. May be automatically reduced for low resolutions",HUD,1,MAX_QUICKBAR_SLOTS);
 	add_var(OPT_INT,"max_food_level","maxfoodlevel",&max_food_level,change_int,45,"Maximum Food Level", "Set the maximum value displayed by the food level bar.",HUD,10,200);
+	add_var(OPT_INT,"wanted_num_recipe_entries","wantednumrecipeentries",&wanted_num_recipe_entries,change_num_recipe_entries,10,"Number of receipe entries", "Sets the number of entries available for the manufacturing window stored recipes.",HUD,4,100);
 	add_var(OPT_BOOL,"3d_map_markers","3dmarks",&marks_3d,change_3d_marks,1,"Enable 3D Map Markers","Shows user map markers in the game window",HUD);
 	add_var(OPT_BOOL,"item_window_on_drop","itemdrop",&item_window_on_drop,change_var,1,"Item Window On Drop","Toggle whether the item window shows when you drop items",HUD);
 	add_var(OPT_FLOAT,"minimap_scale", "minimapscale", &minimap_size_coefficient, change_minimap_scale, 0.7, "Minimap Scale", "Adjust the overall size of the minimap", HUD, 0.5, 1.5, 0.1);
