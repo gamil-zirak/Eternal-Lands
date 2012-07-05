@@ -61,12 +61,24 @@ namespace ItemLists
 	static int cm_names_handler(window_info *win, int widget_id, int mx, int my, int option);
 	static void cm_names_pre_show_handler(window_info *win, int widget_id, int mx, int my, window_info *cm_win);
 
+	//
+	//	Read a line from a file with any training "\r" removed.
+	//	Perhaps some evil windows interaction put it there.....
+	//
+	std::istream& getline_nocr( std::istream& is, std::string& str )
+	{
+		std::istream &res = std::getline(is, str);
+		if (!str.empty() && str[str.size() - 1] == '\r')
+			str.erase(str.size() - 1);
+		return res;
+	}
 
 	//	A class for an individual item list.
 	//
 	class List
 	{
 		public:
+			List(void) : format_error(false) {}
 			bool set(std::string save_name);
 			const std::string & get_name(void) const { return name; }
 			void set_name(const char *new_name) { name = new_name; }
@@ -78,12 +90,14 @@ namespace ItemLists
 			void write(std::ostream & out) const;
 			bool read(std::istream & in);
 			void del(size_t item_index);
-			void add(int image_id, Uint16 id, int quantity);
+			void add(size_t over_item_number, int image_id, Uint16 id, int quantity);
+			bool is_valid_format(void) const { return format_error; }
 		private:
 			std::string name;
 			std::vector<int> image_ids;
 			std::vector<int> quantities;
 			std::vector<Uint16> item_ids;
+			bool format_error;
 	};
 
 
@@ -111,8 +125,8 @@ namespace ItemLists
 				{ assert(valid_active_list()); last_mod_time = SDL_GetTicks(); return saved_item_lists[active_list].set_quantity(item, quantity); }
 			void del_item(size_t i)
 				{ assert(valid_active_list()); saved_item_lists[active_list].del(i); last_mod_time = SDL_GetTicks(); }
-			void add_item(int image_id, Uint16 id, int quantity)
-				{ assert(valid_active_list()); saved_item_lists[active_list].add(image_id, id, quantity); last_mod_time = SDL_GetTicks(); }
+			void add_item(size_t over_item_number, int image_id, Uint16 id, int quantity)
+				{ assert(valid_active_list()); saved_item_lists[active_list].add(over_item_number, image_id, id, quantity); last_mod_time = SDL_GetTicks(); }
 			const List & get_list(void) const
 				{ assert(valid_active_list()); return saved_item_lists[active_list]; }
 			void sort_list(void)
@@ -182,7 +196,8 @@ namespace ItemLists
 				win_id(-1), selected_item_number(static_cast<size_t>(-1)),
 				name_under_mouse(static_cast<size_t>(-1)), clicked(false),
 				mouse_over_add_button(false), last_click_time(0), resizing(false),
-				last_quantity_selected(0), num_grid_rows(min_grid_rows()), last_key_time(0) {}
+				last_quantity_selected(0), num_grid_rows(min_grid_rows()),
+				last_key_time(0), last_items_list_on_left(-1) {}
 			int get_id(void) const { return win_id; }
 			size_t get_grid_cm(void) const { return cm_selected_item_menu; }
 			static int get_grid_size(void) { return 33; };
@@ -196,12 +211,14 @@ namespace ItemLists
 			size_t get_item_number(int mx, int my);
 			void restore_inventory_quantity(void);
 			void update_scroll_len(void);
+			void reset_position(void);
 			void make_active_visable(void);
 			void cm_names_pre_show(void);
 			int keypress(char the_key);
 			void resized_name_panel(window_info *win);
 		private:
 			void calc_num_show_names(int win_len_y);
+			int get_window_pos_x(window_info *parent_win) const;
 			int get_size_x(void) const { return get_grid_size()*6 + ELW_BOX_SIZE + get_list_gap(); }
 			int get_size_y(void) const { return get_grid_size()*num_grid_rows + get_names_size_y(); }
 			int get_names_size_y(void) const
@@ -226,6 +243,7 @@ namespace ItemLists
 			int num_grid_rows;
 			char filter[20];
 			Uint32 last_key_time;
+			int last_items_list_on_left;
 	};
 
 
@@ -304,10 +322,10 @@ namespace ItemLists
 		std::string name_line, image_id_line, cnt_line, item_uid_line;
 
 		// each part is on a separate line, but allow empty lines
-		while (getline(in, name_line) && name_line.empty());
-		while (getline(in, image_id_line) && image_id_line.empty());
-		while (getline(in, cnt_line) && cnt_line.empty());
-		while (getline(in, item_uid_line) && item_uid_line.empty());
+		while (getline_nocr(in, name_line) && name_line.empty());
+		while (getline_nocr(in, image_id_line) && image_id_line.empty());
+		while (getline_nocr(in, cnt_line) && cnt_line.empty());
+		while (getline_nocr(in, item_uid_line) && item_uid_line.empty());
 
 		// mop up extra lines at the end of the file silently
 		if (name_line.empty())
@@ -317,6 +335,7 @@ namespace ItemLists
 		if (image_id_line.empty() || cnt_line.empty() || item_uid_line.empty())
 		{
 			LOG_ERROR("%s: %s [%s]\n", __FILE__, item_list_format_error, name_line.c_str() );
+			format_error = true;
 			return false;
 		}
 
@@ -344,6 +363,7 @@ namespace ItemLists
 		if ((quantities.size() != image_ids.size()) || (quantities.size() != item_ids.size()) || quantities.empty())
 		{
 			LOG_ERROR("%s: %s name=[%s] #id=%d #cnts=%d #uid=%d\n", __FILE__, item_list_format_error, name_line.c_str(), image_ids.size(), quantities.size(), item_ids.size() );
+			format_error = true;
 			return false;
 		}
 
@@ -365,7 +385,7 @@ namespace ItemLists
 
 
 	//	Add a new item to a list or increase quantity if already in the list
-	void List::add(int image_id, Uint16 id, int quantity)
+	void List::add(size_t over_item_number, int image_id, Uint16 id, int quantity)
 	{
 		do_drop_item_sound();
 
@@ -400,10 +420,20 @@ namespace ItemLists
 				}
 		}
 
-		// otherwise add new item
-		image_ids.push_back(image_id);
-		item_ids.push_back(id);
-		quantities.push_back(quantity);
+		// otherwise insert the new item or add it to the end
+
+		if (over_item_number < get_num_items())
+		{
+			image_ids.insert(image_ids.begin()+over_item_number, image_id);
+			item_ids.insert(item_ids.begin()+over_item_number, id);
+			quantities.insert(quantities.begin()+over_item_number, quantity);
+		}
+		else
+		{
+			image_ids.push_back(image_id);
+			item_ids.push_back(id);
+			quantities.push_back(quantity);
+		}
 	}
 
 
@@ -511,9 +541,9 @@ namespace ItemLists
 		{
 			// read the info, image_id and item_id lines
 			std::string info_line, image_id_line, item_id_line;
-			while (getline(in, info_line) && info_line.empty());
-			getline(in, image_id_line);
-			getline(in, item_id_line);
+			while (getline_nocr(in, info_line) && info_line.empty());
+			getline_nocr(in, image_id_line);
+			getline_nocr(in, item_id_line);
 			if (info_line.empty())
 				break;
 
@@ -640,11 +670,19 @@ namespace ItemLists
 			LOG_ERROR("%s: %s [%s]\n", __FILE__, item_list_version_error_str, fullpath.c_str() );
 			return;
 		}
+		bool logged_error = false;
 		while (!in.eof())
 		{
 			saved_item_lists.push_back(List());
 			if (!saved_item_lists.back().read(in))
+			{
+				if ((saved_item_lists.back().is_valid_format()) && !logged_error)
+				{
+					LOG_TO_CONSOLE(c_red2, item_list_format_error);
+					logged_error = true;
+				}
 				saved_item_lists.pop_back();
+			}
 		}
 		in.close();
 		sort_list();
@@ -803,7 +841,7 @@ namespace ItemLists
 			add_button_x = static_cast<int>(get_size_x() - DEFAULT_FONT_X_LEN*2);
 			add_button_y = get_grid_size();
 
-			win_id = create_window(item_list_preview_title, win->window_id, 0, win->len_x + 5, 0, get_size_x(), get_size_y(), ELW_WIN_DEFAULT|ELW_RESIZEABLE);
+			win_id = create_window(item_list_preview_title, win->window_id, 0, get_window_pos_x(win), 0, get_size_x(), get_size_y(), ELW_WIN_DEFAULT|ELW_RESIZEABLE);
 			set_window_handler(win_id, ELW_HANDLER_DISPLAY, (int (*)())&display_itemlist_handler );
 			set_window_handler(win_id, ELW_HANDLER_CLICK, (int (*)())&click_itemlist_handler );
 			set_window_handler(win_id, ELW_HANDLER_MOUSEOVER, (int (*)())&mouseover_itemlist_handler );
@@ -858,6 +896,14 @@ namespace ItemLists
 		{
 			num_grid_rows = new_num_grid_rows;
 			resized_name_panel(win);
+		}
+
+		// if the left/right position flag has changed, restore the window to its default location
+		if (last_items_list_on_left != items_list_on_left)
+		{
+			if (last_items_list_on_left != -1)
+				reset_position();
+			last_items_list_on_left = items_list_on_left;
 		}
 
 		glEnable(GL_TEXTURE_2D);
@@ -1092,19 +1138,20 @@ CHECK_GL_ERRORS();
 		size_t last_selected = selected_item_number;
 		size_t num_items = Vars::lists()->get_list().get_num_items();
 		bool was_dragging = ((storage_item_dragged != -1) || (item_dragged != -1));
+		size_t over_item_number = Vars::win()->get_item_number(mx, my);
 
 		// If dragging item and ctrl+left-click on window, add item to list
 		if ((flags & ELW_LEFT_MOUSE) && (flags & ELW_CTRL) && was_dragging)
 		{
 			if (storage_item_dragged != -1)
-				Vars::lists()->add_item(storage_items[storage_item_dragged].image_id, storage_items[storage_item_dragged].id, item_quantity);
+				Vars::lists()->add_item(over_item_number, storage_items[storage_item_dragged].image_id, storage_items[storage_item_dragged].id, item_quantity);
 			else if (item_dragged != -1)
-				Vars::lists()->add_item(item_list[item_dragged].image_id, item_list[item_dragged].id, item_quantity);
+				Vars::lists()->add_item(over_item_number, item_list[item_dragged].image_id, item_list[item_dragged].id, item_quantity);
 			return 1;
 		}
 
 		// ctrl+right-click on a selected item opens the edit menu
-		if ((flags & ELW_RIGHT_MOUSE) && (flags & ELW_CTRL) && (Vars::win()->get_item_number(mx, my)<num_items))
+		if ((flags & ELW_RIGHT_MOUSE) && (flags & ELW_CTRL) && (over_item_number<num_items))
 		{
 			cm_show_direct(Vars::win()->get_grid_cm(), win->window_id, -1);
 			storage_item_dragged = item_dragged = -1;
@@ -1139,10 +1186,9 @@ CHECK_GL_ERRORS();
 		// see if we can use the item quantity or take items from storage
 		if ((flags & ELW_RIGHT_MOUSE) || (flags & ELW_LEFT_MOUSE))
 		{
-			size_t new_selected = Vars::win()->get_item_number(mx, my);
-			if ((new_selected!=last_selected) && (new_selected < num_items))
+			if ((over_item_number!=last_selected) && (over_item_number < num_items))
 			{
-				selected_item_number = new_selected;
+				selected_item_number = over_item_number;
 				last_quantity_selected = quantities.selected;
 				quantities.selected = ITEM_EDIT_QUANT;
 				item_quantity = quantities.quantity[ITEM_EDIT_QUANT].val = Vars::lists()->get_list().get_quantity(selected_item_number);
@@ -1219,6 +1265,46 @@ CHECK_GL_ERRORS();
 	{
 		if (win_id>=0)
 			vscrollbar_set_bar_len(win_id, names_scroll_id, Vars::lists()->size()-num_show_names_list);
+	}
+
+
+	//	Place to the preferred side butoverride if that would be off screen.
+	//
+	int List_Window::get_window_pos_x(window_info *parent_win) const
+	{
+		if (!parent_win)
+			return 0;
+		int left_pos_x = -5 - get_size_x();
+		int right_pos_x = parent_win->len_x + 5;
+		if (items_list_on_left)
+		{
+			if (parent_win->pos_x + left_pos_x < 0)
+				return right_pos_x;
+			return left_pos_x;
+		}
+		if (parent_win->pos_x + right_pos_x + get_size_x() > window_width)
+			return left_pos_x;
+		return right_pos_x;
+	}
+
+
+	//	Move the window back to the default poistion
+	//
+	void List_Window::reset_position(void)
+	{
+		if ((win_id>=0) && (win_id<windows_list.num_windows))
+		{
+			window_info *list_win = &windows_list.window[win_id];
+			if (list_win && (list_win->pos_id>=0) && (list_win->pos_id<windows_list.num_windows))
+			{
+				window_info *parent_win = &windows_list.window[list_win->pos_id];
+				if (parent_win)
+				{
+					int pos_x = get_window_pos_x(parent_win);
+					move_window(win_id, list_win->pos_id, list_win->pos_loc, parent_win->pos_x + pos_x, parent_win->pos_y);
+				}
+			}
+		}
 	}
 
 

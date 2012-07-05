@@ -89,12 +89,14 @@ int items_stoall_nolastrow = 0;
 int items_dropall_nofirstrow = 0;
 int items_dropall_nolastrow = 0;
 int items_auto_get_all = 0;
+int items_list_on_left = 0;
 static char *item_help_str = NULL;
 static int mouse_over_but = -1;
 static size_t cm_stoall_but = CM_INIT_VALUE;
 static size_t cm_dropall_but = CM_INIT_VALUE;
 static size_t cm_mix_but = CM_INIT_VALUE;
 static size_t cm_getall_but = CM_INIT_VALUE;
+static size_t cm_itemlist_but = CM_INIT_VALUE;
 
 static void drop_all_handler();
 
@@ -700,6 +702,7 @@ int display_items_handler(window_info *win)
 	if ((mouse_over_but != -1) && show_help_text) {
 		char *helpstr[NUMBUT] = { stoall_help_str, getall_help_str, ((disable_double_click) ?drpall_help_str :dcdrpall_help_str), mixoneall_help_str, itmlst_help_str };
 		show_help(helpstr[mouse_over_but], 0, win->len_y+10);
+		show_help(cm_help_options_str, 0, win->len_y+10+SMALL_FONT_Y_LEN);
 	}
 	// show help set in the mouse_over handler
 	else if (show_help_text && (item_help_str != NULL)) {
@@ -882,8 +885,10 @@ int click_items_handler(window_info *win, int mx, int my, Uint32 flags)
 		int pos=get_mouse_pos_in_grid(mx, my, 6, 6, 0, 0, items_grid_size, items_grid_size);
 		
 #ifdef NEW_SOUND
-		item_list[pos].action = ITEM_NO_ACTION;
-		item_list[pos].action_time = 0;
+		if(pos>-1) {
+			item_list[pos].action = ITEM_NO_ACTION;
+			item_list[pos].action_time = 0;
+		}
 #endif // NEW_SOUND
 		if(pos==-1) {
 		} else if(item_dragged!=-1){
@@ -1239,6 +1244,7 @@ int show_items_handler(window_info * win)
 	cm_add_region(cm_getall_but, items_win, win->len_x-(XLENBUT+3), wear_items_y_offset+but_y_off[1], XLENBUT, YLENBUT);
 	cm_add_region(cm_dropall_but, items_win, win->len_x-(XLENBUT+3), wear_items_y_offset+but_y_off[2], XLENBUT, YLENBUT);
 	cm_add_region(cm_mix_but, items_win, win->len_x-(XLENBUT+3), wear_items_y_offset+but_y_off[3], XLENBUT, YLENBUT);
+	cm_add_region(cm_itemlist_but, items_win, win->len_x-(XLENBUT+3), wear_items_y_offset+but_y_off[4], XLENBUT, YLENBUT);
 
 	/* make sure we redraw any string */
 	last_items_string_id = 0;
@@ -1296,6 +1302,9 @@ void display_items_menu()
 
 		cm_getall_but = cm_create(auto_get_all_str, NULL);
 		cm_bool_line(cm_getall_but, 0, &items_auto_get_all, NULL);
+
+		cm_itemlist_but = cm_create(item_list_but_str, NULL);
+		cm_bool_line(cm_itemlist_but, 0, &items_list_on_left, NULL);
 
 		show_items_handler(&windows_list.window[items_win]);
 

@@ -121,7 +121,38 @@ typedef	int (*int_min_max_func)();
 
 typedef char input_line[256];
 
-struct variables our_vars= {0,{NULL}};
+/*!
+ * var_struct stores the data for a single configuration entry.
+ */
+typedef struct
+{
+	option_type type; /*!< type of the variable */
+	char	*name; /*!< name of the variable */
+	int 	nlen; /*!< length of the \a name */
+	char 	*shortname; /*!< shortname of the variable */
+	int 	snlen; /*!< length of the \a shortname */
+	void 	(*func)(); /*!< routine to execute when this variable is selected. */
+	void 	*var; /*!< data for this variable */
+	int 	len; /*!< length of the variable */
+	int	saved;
+//	char 	*message; /*!< In case you want a message to be written when a setting is changed */
+	dichar display;
+	struct {
+		int tab_id; /*!< The tab ID in which we find this option */
+		int label_id; /*!< The label ID associated with this option */
+		int widget_id; /*!< Widget ID for things like checkboxes */
+	} widgets;
+	queue_t *queue; /*!< Queue that holds info for certain widget types. */
+} var_struct;
+
+/*!
+ * a list of variables of type \see var_struct
+ */
+struct variables
+{
+	int no; /*!< current number of allocated \see var_struct in \a var */
+	var_struct * var[200]; /*!< fixed array of \a no \see var_struct structures */
+} our_vars= {0,{NULL}};
 
 int write_ini_on_exit= 1;
 // Window Handling
@@ -183,6 +214,10 @@ int video_info_sent = 0;
  int enable_client_aiming = 0;
 #endif // DEBUG
 
+#ifdef ELC
+static void consolidate_rotate_chat_log_status(void);
+#endif
+
 void options_loaded(void)
 {
 	size_t i;
@@ -191,6 +226,10 @@ void options_loaded(void)
 		if ((!our_vars.var[i]->saved) && (our_vars.var[i]->type!=OPT_BOOL_INI) && (our_vars.var[i]->type!=OPT_INT_INI))
 			our_vars.var[i]->saved = 1;
 	options_set = 1;
+#ifdef ELC
+	get_rotate_chat_log();
+	consolidate_rotate_chat_log_status();
+#endif
 }
 
 
@@ -422,6 +461,75 @@ void change_string(char * var, char * str, int len)
 }
 
 #ifdef ELC
+
+/*
+ * The chat logs are created very early on in the client start up, before the
+ * el.ini file is read at least. Because of this, a simple el.ini file variable
+ * can not be used to enabled/disable rotating chat log files. I suppose the init
+ * code could be changed but rather do that and unleash all kinds of grief, use a
+ * simple flag file when the chat logs are opened.  The el.ini file setting now
+ * becomes the creater/remover of that file.
+ */
+static int rotate_chat_log_config_var = 0;
+static int rotate_chat_log = -1;
+static const char* rotate_chat_log_flag_file = "rotate_chat_log_enabled";
+
+/* get the current value depending on if the flag file exists */
+int get_rotate_chat_log(void)
+{
+	if (rotate_chat_log == -1)
+		rotate_chat_log = (file_exists_config(rotate_chat_log_flag_file)==1) ?1: 0;
+	return rotate_chat_log;
+}
+
+/* create or delete the flag file to reflect the el.ini file rotate chat log value */
+static void change_rotate_chat_log(int *value)
+{
+	*value = !*value;
+
+	/* create the flag file if we are switching on chat log rotate */
+	if (*value && (file_exists_config(rotate_chat_log_flag_file)!=1))
+	{
+		FILE *fp = open_file_config(rotate_chat_log_flag_file,"w");
+		if ((fp == NULL) || (fclose(fp) != 0))
+			LOG_ERROR("%s: Failed to create [%s] [%s]\n", __FILE__, rotate_chat_log_flag_file, strerror(errno) );
+		else
+			LOG_TO_CONSOLE(c_green2, rotate_chat_log_restart_str);
+	}
+	/* remove the flag file if we are switching off chat log rotate */
+	else if (!(*value) && (file_exists_config(rotate_chat_log_flag_file)==1))
+	{
+		const char *config_dir = get_path_config();
+		char *name_buf = NULL;
+		if (config_dir != NULL)
+		{
+			size_t buf_len = strlen(config_dir) + strlen(rotate_chat_log_flag_file) + 1;
+			name_buf = (char *)malloc(buf_len);
+			if (name_buf != NULL)
+			{
+				safe_strncpy(name_buf, config_dir, buf_len);
+				safe_strcat(name_buf, rotate_chat_log_flag_file, buf_len);
+				if (unlink(name_buf) != 0)
+					LOG_ERROR("%s: Failed to remove [%s] [%s]\n", __FILE__, rotate_chat_log_flag_file, strerror(errno) );
+				else
+					LOG_TO_CONSOLE(c_green2, rotate_chat_log_restart_str);
+				free(name_buf);
+			}
+		}
+	}
+}
+
+/* called after the el.in file has been read, so we can consolidate the rotate chat log status */
+static void consolidate_rotate_chat_log_status(void)
+{
+	/* it is too late to use a newly set rotate log value, but we can set the el.ini flag if rotating is on */
+	if ((rotate_chat_log==1) && !rotate_chat_log_config_var)
+	{
+		rotate_chat_log_config_var = 1;
+		set_var_unsaved("rotate_chat_log", OPT_BOOL);
+	}
+}
+
 void change_sound_level(float *var, float * value)
 {
 	if(*value >= 0.0f && *value <= 1.0f+0.00001) {
@@ -968,8 +1076,11 @@ void change_windowed_chat (int *wc, int val)
 	{
 		if (game_root_win >= 0)
 		{
+			int target_win = chat_win;
+			if (get_show_window(console_root_win))
+				target_win = console_root_win;
 			display_chat();
-			input_widget_move_to_win(chat_win);
+			input_widget_move_to_win(target_win);
 		}
 	}
 	else if (chat_win >= 0)
@@ -1014,8 +1125,7 @@ void change_chat_zoom(float *dest, float *value)
 			opening_win_update_zoom();
 		}
 		if (console_root_win >= 0) {
-			nr_console_lines= (int) (window_height - input_widget->len_y - CONSOLE_SEP_HEIGHT - hud_y - 10) / (18 * chat_zoom);
-			widget_set_size(console_root_win, console_out_id, *value);
+			console_font_resize(*value);
 		}
 		if (chat_win >= 0) {
 			chat_win_update_zoom();
@@ -1371,6 +1481,7 @@ int set_var_OPT_INT(const char *str, int new_value)
 		int widget_id = our_vars.var[var_index]->widgets.widget_id;
 		// This bit belongs in the widgets module
 		widget_list *widget = widget_find(tab_win_id, widget_id);
+		our_vars.var[var_index]->saved = 0;
 		if(widget != NULL && widget->widget_info != NULL)
 		{
 			spinbutton *button = widget->widget_info;
@@ -1391,7 +1502,7 @@ void change_language(const char *new_lang)
 {
 	int var_index;
 
-	LOG_ERROR("Language changed, was [%s] now [%s]\n",  lang, new_lang);
+	LOG_DEBUG("Language changed, was [%s] now [%s]\n",  lang, new_lang);
 	/* guard against being the same string */
 	if (strcmp(lang, new_lang) != 0)
 		safe_strncpy(lang, new_lang, sizeof(lang));
@@ -1760,6 +1871,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"show_fps","fps",&show_fps,change_var,1,"Show FPS","Show the current frames per second in the corner of the window",HUD);
 	add_var(OPT_BOOL,"view_analog_clock","analog",&view_analog_clock,change_var,1,"Analog Clock","Toggle the analog clock",HUD);
 	add_var(OPT_BOOL,"view_digital_clock","digit",&view_digital_clock,change_var,1,"Digital Clock","Toggle the digital clock",HUD);
+	add_var(OPT_BOOL,"view_knowledge_bar","knowledge_bar",&view_knowledge_bar,change_var,1,"Knowledge Bar","Toggle the knowledge bar",HUD);
 	add_var(OPT_BOOL,"show_game_seconds","show_game_seconds",&show_game_seconds,change_var,0,"Show Game Seconds","Show seconds on the digital clock. Note: the seconds displayed are computed on client side and synchronized with the server at each new minute.",HUD);
 	add_var(OPT_BOOL,"show_stats_in_hud","sstats",&show_stats_in_hud,change_var,0,"Stats In HUD","Toggle showing stats in the HUD",HUD);
 	add_var(OPT_BOOL,"show_statbars_in_hud","sstatbars",&show_statbars_in_hud,change_var,0,"StatBars In HUD","Toggle showing statbars in the HUD. Needs Stats in HUD",HUD);
@@ -1774,9 +1886,9 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"opaque_window_backgrounds", "opaquewin", &opaque_window_backgrounds, change_var, 0,"Use Opaque Window Backgrounds","Toggle the current state of all windows between transparent and opaque background. Use CTRL+D to toggle the current state of an individual window.",HUD);
 	add_var(OPT_SPECINT, "buff_icon_size","bufficonsize", &buff_icon_size, set_buff_icon_size, 32, "Buff Icon Size","The size of the icons of the active buffs.  Icons are not displayed when size set to zero.",HUD,0,48);
 	add_var(OPT_BOOL,"relocate_quickbar", "requick", &quickbar_relocatable, change_quickbar_relocatable, 0,"Relocate Quickbar","Set whether you can move the quickbar",HUD);
-	add_var(OPT_INT,"num_quickbar_slots","numqbslots",&num_quickbar_slots,change_int,6,"Number Of Quickbar Slots","Set the number of quickbar slots displayed. May be automatically reduced for low resolutions",HUD,1,MAX_QUICKBAR_SLOTS);
+	add_var(OPT_INT,"num_quickbar_slots","numqbslots",&num_quickbar_slots,change_int,6,"Number Of Quickbar Slots","Set the number of quickbar slots (both inventory & spells) displayed. May be automatically reduced for low resolutions",HUD,1,MAX_QUICKBAR_SLOTS);
 	add_var(OPT_INT,"max_food_level","maxfoodlevel",&max_food_level,change_int,45,"Maximum Food Level", "Set the maximum value displayed by the food level bar.",HUD,10,200);
-	add_var(OPT_INT,"wanted_num_recipe_entries","wantednumrecipeentries",&wanted_num_recipe_entries,change_num_recipe_entries,10,"Number of receipe entries", "Sets the number of entries available for the manufacturing window stored recipes.",HUD,4,100);
+	add_var(OPT_INT,"wanted_num_recipe_entries","wantednumrecipeentries",&wanted_num_recipe_entries,change_num_recipe_entries,10,"Number of receipe entries", "Sets the number of entries available for the manufacturing window stored recipes.",HUD,4,max_num_recipe_entries);
 	add_var(OPT_BOOL,"3d_map_markers","3dmarks",&marks_3d,change_3d_marks,1,"Enable 3D Map Markers","Shows user map markers in the game window",HUD);
 	add_var(OPT_BOOL,"item_window_on_drop","itemdrop",&item_window_on_drop,change_var,1,"Item Window On Drop","Toggle whether the item window shows when you drop items",HUD);
 	add_var(OPT_FLOAT,"minimap_scale", "minimapscale", &minimap_size_coefficient, change_minimap_scale, 0.7, "Minimap Scale", "Adjust the overall size of the minimap", HUD, 0.5, 1.5, 0.1);
@@ -1784,6 +1896,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"pin_minimap","pinminimap",&pin_minimap,change_var,0,"Pin Minimap","Toggle whether the minimap ignores close-all-windows.",HUD);
 	add_var(OPT_BOOL, "continent_map_boundaries", "cmb", &show_continent_map_boundaries, change_var, 1, "Map Boundaries On Continent Map", "Show map boundaries on the continent map", HUD);
 	add_var(OPT_BOOL,"enable_user_menus", "user_menus", &enable_user_menus, toggle_user_menus, 0, "Enable User Menus","Create .menu files in your config directory.  First line is the menu name. After that, each line is a command using the format \"Menus Text||command\".  Prompt for input using \"command text <prompt text>\". A line can include multiple commands.",HUD);
+	add_var(OPT_BOOL,"console_scrollbar_enabled", "console_scrollbar", &console_scrollbar_enabled, toggle_console_scrollbar, 1, "Show Console Scrollbar","If enabled, a scrollbar will be shown in the console window.",HUD);
 #if !defined(WINDOWS) && !defined(OSX)
 	add_var(OPT_BOOL,"use_clipboard","uclb",&use_clipboard, change_var, 1, "Use Clipboard For Pasting", "Use CLIPBOARD for pasting (as e.g. GNOME does) or use PRIMARY cutbuffer (as xterm does)",HUD);
 #endif
@@ -1814,6 +1927,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"mod_chat_separate", "modsep", &mod_chat_separate, change_separate_flag, 0, "Separate Moderator Chat", "Should moderator chat be separated from the rest?", CHAT);
 	add_var(OPT_BOOL,"highlight_tab_on_nick", "highlight", &highlight_tab_on_nick, change_var, 1, "Highlight Tabs On Name", "Should tabs be highlighted when someone mentions your name?", CHAT);
 	add_var(OPT_BOOL,"emote_filter", "emote_filter", &emote_filter, change_var, 1, "Emotes filter", "Do not display lines of text in local chat containing emotes only", CHAT);
+	add_var(OPT_BOOL,"summoning_filter", "summ_filter", &summoning_filter, change_var, 0, "Summoning filter", "Do not display lines of text in local chat containing summoning messages", CHAT);
 	add_var(OPT_INT,"time_warning_hour","warn_h",&time_warn_h,change_int,-1,"Time warning for new hour","If set to -1, there will be no warning given. Otherwise, you will get a notification in console this many minutes before the new hour",CHAT, -1, 30);
 	add_var(OPT_INT,"time_warning_sun","warn_s",&time_warn_s,change_int,-1,"Time warning for dawn/dusk","If set to -1, there will be no warning given. Otherwise, you will get a notification in console this many minutes before sunrise/sunset",CHAT, -1, 30);
 	add_var(OPT_INT,"time_warning_day","warn_d",&time_warn_d,change_int,-1,"Time warning for new #day","If set to -1, there will be no warning given. Otherwise, you will get a notification in console this many minutes before the new day",CHAT, -1, 30);
@@ -1846,6 +1960,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_STRING,"username","u",username_str,change_string,MAX_USERNAME_LENGTH,"Username","Your user name here",SERVER);
 	add_var(OPT_PASSWORD,"password","p",password_str,change_string,MAX_USERNAME_LENGTH,"Password","Put your password here",SERVER);
 	add_var(OPT_MULTI,"log_chat","log",&log_chat,change_int,LOG_SERVER,"Log Messages","Log messages from the server (chat, harvesting events, GMs, etc)",SERVER,"Do not log chat", "Log chat only", "Log server messages", "Log server to srv_log.txt", NULL);
+	add_var(OPT_BOOL,"rotate_chat_log","rclog",&rotate_chat_log_config_var,change_rotate_chat_log,0,"Rotate Chat Log File","Tag the chat/server message log files with year and month. You will still need to manage deletion of the old files. Requires a client restart.",SERVER);
 	add_var(OPT_BOOL,"buddy_log_notice", "buddy_log_notice", &buddy_log_notice, change_var, 1, "Log Buddy Sign On/Off", "Toggle whether to display notices when people on your buddy list log on or off", SERVER);
 	add_var(OPT_STRING,"language","lang",lang,change_string,8,"Language","Wah?",SERVER);
 	add_var(OPT_STRING,"browser","b",browser_name,change_string,70,"Browser","Location of your web browser (Windows users leave blank to use default browser)",SERVER);

@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <SDL/SDL_keysym.h>
 #include "gamewin.h"
 #include "2d_objects.h"
 #include "3d_objects.h"
@@ -512,6 +513,7 @@ int click_game_handler(window_info *win, int mx, int my, Uint32 flags)
 
 	if (flags & ELW_WHEEL_UP)
 	{
+		camera_zoom_speed = (flag_ctrl) ?10 :1;
 		if (camera_zoom_dir == -1)
 			camera_zoom_duration += 100;
 		else
@@ -522,6 +524,7 @@ int click_game_handler(window_info *win, int mx, int my, Uint32 flags)
 
 	if (flags & ELW_WHEEL_DOWN)
 	{
+		camera_zoom_speed = (flag_ctrl) ?10 :1;
 		if (camera_zoom_dir == 1)
 			camera_zoom_duration += 100;
 		else
@@ -944,7 +947,7 @@ int click_game_handler(window_info *win, int mx, int my, Uint32 flags)
                     
                     target[0] = x * 0.5 + 0.25;
                     target[1] = y * 0.5 + 0.25;
-                    target[2] = height_map[y*tile_map_size_x*6+x]*0.2f - 1.0f;
+                    target[2] = get_tile_height(x, y) + 1.2f;
                     
 					missiles_aim_at_xyz(yourself, target);
 					add_command_to_actor(yourself, aim_mode_reload);
@@ -1319,10 +1322,10 @@ int display_game_handler (window_info *win)
 	{
 		int msg, offset, filter;
 		filter = use_windowed_chat == 1 ? current_filter : FILTER_ALL;
-		if (find_last_lines_time (&msg, &offset, filter, console_text_width))
+		if (find_last_lines_time (&msg, &offset, filter, get_console_text_width()))
 		{
 			set_font(chat_font);	// switch to the chat font
-			draw_messages (10, use_windowed_chat == 1 ? 25 : 20, display_text_buffer, DISPLAY_TEXT_BUFFER_SIZE, filter, msg, offset, -1, console_text_width, (int) (1 + lines_to_show * 18 * chat_zoom), chat_zoom, NULL);
+			draw_messages (10, use_windowed_chat == 1 ? 25 : 20, display_text_buffer, DISPLAY_TEXT_BUFFER_SIZE, filter, msg, offset, -1, get_console_text_width(), (int) (1 + lines_to_show * 18 * chat_zoom), chat_zoom, NULL);
 			set_font (0);	// switch to fixed
 		}
 	}
@@ -1377,21 +1380,34 @@ int check_quit_or_fullscreen (Uint32 key)
 
 Uint8 key_to_char (Uint32 unikey)
 {
-	if ( (unikey >= 256 && unikey <= 267) || unikey==271)
+	// convert keypad values (numlock on)
+	if (unikey >= SDLK_KP0 && unikey <= SDLK_KP_EQUALS)
 	{
 		switch (unikey)
 		{
-			case 266:
-				return 46;
-			case 267:
-				return 47;
-			case 271:
-				return 13;
+			case SDLK_KP_PERIOD:
+				return SDLK_PERIOD;
+			case SDLK_KP_DIVIDE:
+				return SDLK_SLASH;
+			case SDLK_KP_MULTIPLY:
+				return SDLK_ASTERISK;
+			case SDLK_KP_MINUS:
+				return SDLK_MINUS;
+			case SDLK_KP_PLUS:
+				return SDLK_PLUS;
+			case SDLK_KP_ENTER:
+				return SDLK_RETURN;
+			case SDLK_KP_EQUALS:
+				return SDLK_EQUALS;
 			default:
-				return (unikey-208)&0xff;
+				return (unikey-SDLK_WORLD_48)&0xff;
 		}
 	}
-	
+
+	// catch stupid windows problem if control+enter pressed (that 10 is retuned not 13)
+	if (unikey == 10)
+		return SDLK_RETURN;
+
 	return unikey & 0xff;
 }
 
@@ -2222,7 +2238,7 @@ int keypress_game_handler (window_info *win, int mx, int my, Uint32 key, Uint32 
 	else if (keysym == SDLK_F9)
 	{
 		actor *me = get_actor_ptr_from_id (yourself);
-		ec_create_campfire(me->x_pos + 0.25f, me->y_pos + 0.25f, -2.3f + height_map[me->y_tile_pos*tile_map_size_x*6+me->x_tile_pos]*0.2f + 0.1f, 0.0, 1.0, (poor_man ? 6 : 10), 0.7);
+		ec_create_campfire(me->x_pos + 0.25f, me->y_pos + 0.25f, get_tile_height(me->x_tile_pos, me->y_tile_pos), 0.0, 1.0, (poor_man ? 6 : 10), 0.7);
 	}
 #ifdef DEBUG
 	else if (keysym == SDLK_F10)

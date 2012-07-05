@@ -815,7 +815,6 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 	text_field *tf;
 	text_message *msg;
 	int alt_on = key & ELW_ALT, ctrl_on = key & ELW_CTRL;
-	int tmp_chan;
 
 	if(input_widget == NULL || (input_widget->Flags & TEXT_FIELD_EDITABLE) == 0) {
 		return 0;
@@ -823,7 +822,6 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 
 	tf = input_widget->widget_info;
 	msg = &(tf->buffer[tf->msg]);
-	tmp_chan = msg->chan_idx;
 
 	if (keysym == SDLK_ESCAPE)
 	{
@@ -845,10 +843,7 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 
 		// set invalid width to force rewrap
 		msg->wrap_width = 0;
-		// set to CHAT_NONE so rewrap_message doesn't mess with total_nr_lines
-		msg->chan_idx = CHAT_NONE;
 		tf->nr_lines = rewrap_message (msg, input_widget->size, input_widget->len_x - 2 * tf->x_space, &tf->cursor);
-		msg->chan_idx = tmp_chan;		
 	}
 	else if (ch == SDLK_BACKSPACE || ch == SDLK_DELETE
 #ifdef OSX
@@ -895,7 +890,6 @@ void paste_in_input_field (const Uint8 *text)
 {
 	text_field *tf;
 	text_message *msg;
-	int tmp_chan;
 
 	if (input_widget == NULL) {
 		return;
@@ -910,11 +904,7 @@ void paste_in_input_field (const Uint8 *text)
 
 	// set invalid width to force rewrap
 	msg->wrap_width = 0;
-	//Set to CHAT_NONE so rewrap_message doesn't mess with total_nr_lines.
-	tmp_chan = msg->chan_idx;
-	msg->chan_idx = CHAT_NONE;
 	tf->nr_lines = rewrap_message(msg, input_widget->size, input_widget->len_x - 2 * tf->x_space, &tf->cursor);
-	msg->chan_idx = tmp_chan;
 	if(use_windowed_chat != 2) {
 		widget_resize(input_widget->window_id, input_widget->id, input_widget->len_x, tf->y_space*2 + ceilf(DEFAULT_FONT_Y_LEN*input_widget->size*tf->nr_lines));
 	}
@@ -924,17 +914,12 @@ void put_string_in_input_field(const Uint8 *text)
 {
 	text_field *tf = input_widget->widget_info;
 	text_message *msg = &(tf->buffer[tf->msg]);
-	int tmp_chan;
 
 	if(text != NULL) {
 		tf->cursor = msg->len = safe_snprintf((char*)msg->data, msg->size, "%s", text);
 		// set invalid width to force rewrap
 		msg->wrap_width = 0;
-		//Set to CHAT_NONE so rewrap_message doesn't mess with total_nr_lines.
-		tmp_chan = msg->chan_idx;
-		msg->chan_idx = CHAT_NONE;
 		tf->nr_lines = rewrap_message(msg, input_widget->size, input_widget->len_x - 2 * tf->x_space, &tf->cursor);
-		msg->chan_idx = tmp_chan;
 		if(use_windowed_chat != 2) {
 			widget_resize(input_widget->window_id, input_widget->id, input_widget->len_x, tf->y_space*2 + ceilf(DEFAULT_FONT_Y_LEN*input_widget->size*tf->nr_lines));
 		}
@@ -1681,9 +1666,9 @@ int tab_special_click(widget_list *w, int mx, int my, Uint32 flags)
 }
 
 
-// Just for drawing an 'x' on channel buttons.
+// Draw details on the channel buttons.
 
-int draw_tab_x (widget_list *W)
+static int draw_tab_details (widget_list *W)
 {
 	int x = W->pos_x + W->len_x - 6;
 	int y = W->pos_y+5;
@@ -1697,18 +1682,32 @@ int draw_tab_x (widget_list *W)
 	for (itab = 0; itab < tabs_in_use; itab++)
 		if ((tabs[itab].button == W->id) && (tabs[itab].channel == CHAT_CHANNEL1 + current_channel))
 		{
-			/* draw the "+" for the active channel */
 			int x = W->pos_x+2;
 			int y = W->pos_y+1;
+			/* draw the "+" for the active channel */
 			glBegin(GL_LINES);
 				glVertex2i(x+gx_adjust,y+4);
 				glVertex2i(x+7+gx_adjust,y+4);
 				glVertex2i(x+3,y+gy_adjust);
 				glVertex2i(x+3,y+7+gy_adjust);
 			glEnd();
+			/* draw a dotted underline if input would go to this channel */
+			if ((input_text_line.len > 0) && (input_text_line.data[0] == '@') && !((input_text_line.len > 1) && (input_text_line.data[1] == '@')))
+			{
+				glPushAttrib(GL_ENABLE_BIT|GL_LINE_BIT);
+				glEnable(GL_LINE_STIPPLE);
+				glLineStipple(1, 0xCCCC);
+				glLineWidth(3.0);
+				glBegin(GL_LINES);
+					glVertex2i(W->pos_x, W->pos_y + W->len_y + 4);
+					glVertex2i(W->pos_x + W->len_x, W->pos_y + W->len_y + 4);
+				glEnd();
+				glPopAttrib();
+			}
 			break;
 		}
-	
+
+	/* draw the closing x */
 	glBegin(GL_LINES);
 		glVertex2i(x-4,y-4);
 		glVertex2i(x+3,y+3);
@@ -1766,7 +1765,7 @@ int add_tab_button (Uint8 channel)
  	if(tabs[itab].channel == CHAT_CHANNEL1 || tabs[itab].channel == CHAT_CHANNEL2 ||
  	   tabs[itab].channel == CHAT_CHANNEL3)
  	{
- 		widget_set_OnDraw (tab_bar_win, tabs[itab].button, draw_tab_x);
+ 		widget_set_OnDraw (tab_bar_win, tabs[itab].button, draw_tab_details);
  	}
 	tab_bar_width += widget_get_width (tab_bar_win, tabs[tabs_in_use].button)+1;
 	resize_window (tab_bar_win, tab_bar_width, tab_bar_height);
@@ -1813,13 +1812,13 @@ void update_tab_bar (text_message * msg)
 	// Only update specific channels
 	channel = get_tab_channel (msg->chan_idx);
 	if (channel == CHAT_ALL || channel == CHAT_MODPM) {
-		lines_to_show += rewrap_message(msg, chat_zoom, console_text_width, NULL);
+		lines_to_show += rewrap_message(msg, chat_zoom, get_console_text_width(), NULL);
 		if (lines_to_show >= 10) lines_to_show = 10;
 		return;
 	}
 
 	if (tabs[current_tab].channel == CHAT_ALL) {
-		lines_to_show += rewrap_message(msg, chat_zoom, console_text_width, NULL);
+		lines_to_show += rewrap_message(msg, chat_zoom, get_console_text_width(), NULL);
 		if (lines_to_show >= 10) lines_to_show = 10;
 	}
 
@@ -1830,7 +1829,7 @@ void update_tab_bar (text_message * msg)
 			if (current_tab != itab && !tabs[itab].highlighted && tabs[current_tab].channel != CHAT_ALL && !get_show_window(console_root_win))
 				widget_set_color (tab_bar_win, tabs[itab].button, 1.0f, 1.0f, 0.0f);
 			if (current_tab == itab) {
-				lines_to_show += rewrap_message(msg, chat_zoom, console_text_width, NULL);
+				lines_to_show += rewrap_message(msg, chat_zoom, get_console_text_width(), NULL);
 				if (lines_to_show >= 10) lines_to_show = 10;
 			}
 			return;
