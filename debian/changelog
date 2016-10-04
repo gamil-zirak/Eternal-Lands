@@ -1,5 +1,6 @@
-eternallands (1.9.3-0ubuntu1) lucid; urgency=low
+eternallands (1.9.4-0ubuntu1) precise; urgency=low
 
-  * 1.9.3 Release
+  * 1.9.4 release, see CHANGES file at
+      https://github.com/raduprv/Eternal-Lands/blob/master/CHANGES
 
- -- Paul Broadhead <pjbroad@twinmoons.org.uk>  Sat, 04 Feb 2012 19:35:46 +0000
+ -- Paul Broadhead <pjbroad@twinmoons.org.uk>  Mon, 20 Apr 2015 19:09:55 +0100

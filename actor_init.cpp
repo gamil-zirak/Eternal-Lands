@@ -734,6 +734,7 @@ extern "C" void build_buffers(actor_types* a)
 		ELglBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB,
 			a->hardware_model->getTotalFaceCount() * 3 * sizeof(GLushort), data16,
 			GL_STATIC_DRAW_ARB);
+		delete[] data16;
 	}
 	else
 	{
@@ -747,7 +748,21 @@ extern "C" void build_buffers(actor_types* a)
 
 	ELglBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, 0);
 
+	delete[] vertex_buffer;
+	delete[] normal_buffer;
+	delete[] weight_buffer;
+	delete[] matrix_index_buffer;
+	delete[] texture_coordinate_buffer;
+	delete[] indices;
+	delete[] buffer;
+	delete[] data32;
+
 	LOG_INFO("Build vertex buffers for '%s' done", a->actor_name);
+}
+
+extern "C" void clear_buffers(actor_types* a)
+{
+	delete a->hardware_model;
 }
 
 static inline void set_transformation_buffer(actor_types *a, actor *act, const Uint32 index,

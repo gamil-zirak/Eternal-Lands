@@ -23,8 +23,10 @@
 #include "asc.h"
 #include "astrology.h"
 #include "bbox_tree.h"
+#include "books.h"
 #include "buddy.h"
 #include "console.h"
+#include "counters.h"
 #include "cursors.h"
 #include "draw_scene.h"
 #include "e3d.h"
@@ -35,11 +37,15 @@
 #include "events.h"
 #include "gl_init.h"
 #include "hud.h"
+#include "icon_window.h"
+#include "io/elfilewrapper.h"
 #include "init.h"
 #include "item_lists.h"
 #include "interface.h"
 #include "lights.h"
 #include "manufacture.h"
+#include "map.h"
+#include "minimap.h"
 #include "multiplayer.h"
 #include "particles.h"
 #include "pm_log.h"
@@ -47,22 +53,23 @@
 #include "queue.h"
 #include "reflection.h"
 #include "rules.h"
+#include "session.h"
+#include "shader/shader.h"
+#include "sky.h"
 #include "sound.h"
 #include "text.h"
 #include "timers.h"
 #include "translate.h"
+#include "textures.h"
+#include "update.h"
 #include "url.h"
 #include "weather.h"
-#include "counters.h"
 #ifdef MEMORY_DEBUG
 #include "elmemory.h"
 #endif
-#include "minimap.h"
 #ifdef PAWN
 #include "pawn/elpawn.h"
 #endif
-#include "map.h"
-#include "io/elfilewrapper.h"
 #ifdef	CUSTOM_UPDATE
 #include "custom_update.h"
 #endif	/* CUSTOM_UPDATE */
@@ -78,7 +85,7 @@ int client_version_minor=VER_MINOR;
 int client_version_release=VER_RELEASE;
 int	client_version_patch=VER_BUILD;
 int version_first_digit=10;	//protocol/game version sent to server
-int version_second_digit=26;
+int version_second_digit=27;
 
 int gargc;
 char **  gargv;
@@ -95,30 +102,24 @@ void cleanup_mem(void)
 	cleanup_manufacture();
 	cleanup_text_buffers();
 	cleanup_fonts();
-	cursors_cleanup();
 	destroy_all_actors();
 	end_actors_lists();
 	cleanup_lights();
 	/* 2d objects */
 	destroy_all_2d_objects();
+	destroy_all_2d_object_defs();
 	/* 3d objects */
 	destroy_all_3d_objects();
-
 	/* caches */
 	cache_e3d->free_item = &destroy_e3d;
 	cache_delete(cache_e3d);
 	cache_e3d = NULL;
-	// Horrible hack >>>>
-	// There's a bug with this call, it appears to make use of memory it's already freed.
-	// Valgrind shows on Linux but I've not seen a crash.
-	// It appears to cause a crash on windows XP.
-	// It appears only to happen when NEW_TEXTURES is enabled.
-	// It is in the code from many weeks back.
-	// Until the bug can be found, just don't do the call.
-	// Hunting the bug continues.... pjbroad/blaup
-	//cache_delete(cache_system);
+#ifdef NEW_TEXTURES
+	free_texture_cache();
+#endif
+	// This should be fixed now  Sir_Odie
+	cache_delete(cache_system);
 	cache_system = NULL;
-	// Horrible hack <<<
 	/* map location information */
 	for (i = 0; continent_maps[i].name; i++)
 	{
@@ -133,6 +134,7 @@ void cleanup_mem(void)
 		if (video_modes[i].name)
 			free(video_modes[i].name);
 	}
+	free_shaders();
 }
 
 /* temp code to allow my_timer to dynamically adjust partical update rate */
@@ -171,6 +173,9 @@ int start_rendering()
 			//advance the clock
 			cur_time = SDL_GetTicks();
 
+			// update the approximate distance moved
+			update_session_distance();
+
 			//check for network data
 			if(!queue_isempty(message_queue)) {
 				message_t *message;
@@ -202,9 +207,9 @@ int start_rendering()
 				next_second_time += 1000;
 			}
 
-#if defined(NEW_WEATHER) && defined(NEW_SOUND)
+#ifdef NEW_SOUND
 			weather_sound_control();
-#endif // NEW_WEATHER
+#endif	//NEW_SOUND
 
 			if(!limit_fps || (cur_time-last_time && 1000/(cur_time-last_time) <= limit_fps))
 			{
@@ -238,7 +243,7 @@ int start_rendering()
 	LOG_INFO("Client closed");
 	SDL_WaitThread(network_thread,&done);
 	queue_destroy(message_queue);
-	if(pm_log.ppl)free_pm_log();
+	free_pm_log();
 
 	//save all local data
 	save_local_data(NULL, 0);
@@ -251,21 +256,32 @@ int start_rendering()
 	destroy_sound();		// Cleans up physical elements of the sound system and the streams thread
 	clear_sound_data();		// Cleans up the config data
 #endif // NEW_SOUND
+	ec_destroy_all_effects();
+	if (have_a_map)
+	{
+		destroy_map();
+		free_buffers();
+	}
 	unload_questlog();
 	save_item_lists();
 	free_emotes();
-	free_icons();
+	free_actor_defs();
+	free_books();
 	free_vars();
 	cleanup_rules();
 	save_exploration_map();
 	cleanup_counters();
 	cleanup_chan_names();
+	cleanup_hud();
+	destroy_all_root_windows();
 	SDL_RemoveTimer(draw_scene_timer);
 	SDL_RemoveTimer(misc_timer);
 	end_particles ();
 	free_bbox_tree(main_bbox_tree);
 	main_bbox_tree = NULL;
 	free_astro_buffer();
+	free_translations();
+	free_skybox();
 	/* Destroy our GL context, etc. */
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 	SDL_QuitSubSystem(SDL_INIT_TIMER);
@@ -284,8 +300,13 @@ int start_rendering()
 	stopp_custom_update();
 #endif	/* CUSTOM_UPDATE */
 	clear_zip_archives();
+	clean_update();
 
-	destroy_tcp_out_mutex();
+	cleanup_tcp();
+
+	if (use_frame_buffer) free_reflection_framebuffer();
+
+	cursors_cleanup();
 
 	printf("doing SDL_Quit\n");
 	fflush(stderr);
@@ -295,8 +316,6 @@ int start_rendering()
 	cleanup_mem();
 	xmlCleanupParser();
 	FreeXML();
-	// shouldn't this be before SDL_Quit()? that shutsdown the video mode
-	if (use_frame_buffer) free_reflection_framebuffer();
 
 	exit_logging();
 

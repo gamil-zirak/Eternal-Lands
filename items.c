@@ -16,6 +16,7 @@
 #include "hud.h"
 #include "init.h"
 #include "interface.h"
+#include "item_info.h"
 #include "item_lists.h"
 #include "manufacture.h"
 #include "misc.h"
@@ -72,6 +73,7 @@ int quantity_y_offset=185;
 
 int use_small_items_window = 0;
 int manual_size_items_window = 0;
+int items_mod_click_any_cursor = 1;
 
 int item_uid_enabled = 0;
 const Uint16 unset_item_uid = (Uint16)-1;
@@ -90,13 +92,15 @@ int items_dropall_nofirstrow = 0;
 int items_dropall_nolastrow = 0;
 int items_auto_get_all = 0;
 int items_list_on_left = 0;
-static char *item_help_str = NULL;
+static const char *item_help_str = NULL;
+static const char *item_desc_str = NULL;
 static int mouse_over_but = -1;
 static size_t cm_stoall_but = CM_INIT_VALUE;
 static size_t cm_dropall_but = CM_INIT_VALUE;
 static size_t cm_mix_but = CM_INIT_VALUE;
 static size_t cm_getall_but = CM_INIT_VALUE;
 static size_t cm_itemlist_but = CM_INIT_VALUE;
+static int mouseover_item_pos = -1;
 
 static void drop_all_handler();
 
@@ -439,7 +443,7 @@ void get_new_inventory_item (const Uint8 *data)
 	image_id=SDL_SwapLE16(*((Uint16 *)(data)));
 	quantity=SDL_SwapLE32(*((Uint32 *)(data+2)));
 
-	if (harvesting && (quantity >= item_list[pos].quantity) ) {	//some harvests, eg hydrogenium and wolfram, also decrease an item number. only count what goes up
+	if (now_harvesting() && (quantity >= item_list[pos].quantity) ) {	//some harvests, eg hydrogenium and wolfram, also decrease an item number. only count what goes up
 		increment_harvest_counter(item_list[pos].quantity > 0 ? quantity - item_list[pos].quantity : quantity);
 	}
 
@@ -539,6 +543,9 @@ int display_items_handler(window_info *win)
 	}
 	draw_string_small(win->len_x-strlen(quantity_str)*8-5, quantity_y_offset-19, (unsigned char*)quantity_str, 1);
 
+	glColor3f(0.57f,0.67f,0.49f);
+	draw_string_small (wear_items_x_offset + 33 - (8 * strlen(equip_str))/2, wear_items_y_offset-18, (unsigned char*)equip_str, 1);
+
 	glColor3f(1.0f,1.0f,1.0f);
 	//ok, now let's draw the objects...
 	for(i=ITEM_NUM_ITEMS-1;i>=0;i--){
@@ -621,15 +628,21 @@ int display_items_handler(window_info *win)
 
 				glDisable(GL_BLEND);
 				glEnable(GL_TEXTURE_2D);
-				//glColor3f(1.0f, 1.0f, 1.0f); //moved below
 			}
 			
 			if(!item_is_weared){
 				safe_snprintf(str, sizeof(str), "%i", item_list[i].quantity);
-				draw_string_small_shadowed(x_start, (i&1)?(y_end-15):(y_end-25), (unsigned char*)str, 1,1.0f,1.0f,1.0f, 0.0f, 0.0f, 0.0f);			}
+				if ((mouseover_item_pos == i) && enlarge_text())
+					draw_string_shadowed(x_start, (i&1)?(y_end-15):(y_end-25), (unsigned char*)str, 1,1.0f,1.0f,1.0f, 0.0f, 0.0f, 0.0f);
+				else
+					draw_string_small_shadowed(x_start, (i&1)?(y_end-15):(y_end-25), (unsigned char*)str, 1,1.0f,1.0f,1.0f, 0.0f, 0.0f, 0.0f);
+			}
 		}
 	}
-	
+	mouseover_item_pos = -1;
+
+	glColor3f(1.0f,1.0f,1.0f);
+
 	//draw the load string
 	if (!use_small_items_window)
 	{
@@ -644,11 +657,6 @@ int display_items_handler(window_info *win)
 		draw_string_small(2, quantity_y_offset-19, (unsigned char*)str, 1);
 	}
 
-	glColor3f(0.57f,0.67f,0.49f);
-	safe_snprintf(str,sizeof(str),equip_str);
-	draw_string_small (wear_items_x_offset + 33 - (8 * strlen(str))/2, wear_items_y_offset-18, (unsigned char*)str, 1);
-	glColor3f(1.0f,1.0f,1.0f);
-	
 	//now, draw the inventory text, if any.
 	if (last_items_string_id != inventory_item_string_id)
 	{		
@@ -705,9 +713,16 @@ int display_items_handler(window_info *win)
 		show_help(cm_help_options_str, 0, win->len_y+10+SMALL_FONT_Y_LEN);
 	}
 	// show help set in the mouse_over handler
-	else if (show_help_text && (item_help_str != NULL)) {
-		show_help(item_help_str, 0, win->len_y+10);
+	else {
+		int offset = 10;
+		if (show_help_text && (item_help_str != NULL)) {
+			show_help(item_help_str, 0, win->len_y+offset);
+			offset += SMALL_FONT_Y_LEN;
+		}
+		if (item_desc_str != NULL)
+			show_help(item_desc_str, 0, win->len_y+offset);
 		item_help_str = NULL;
+		item_desc_str = NULL;
 	}
 
 	mouse_over_but = -1;
@@ -799,6 +814,9 @@ int click_items_handler(window_info *win, int mx, int my, Uint32 flags)
 
 	// only handle mouse button clicks, not scroll wheels moves (unless its the mix button)
 	if (((flags & ELW_MOUSE_BUTTON) == 0) && (over_button(win, mx, my) != BUT_MIX)) return 0;
+
+	// ignore middle mouse button presses
+	if ((flags & ELW_MID_MOUSE) != 0) return 0;
 
 	if (!right_click && over_button(win, mx, my) != -1)
 		do_click_sound();
@@ -921,7 +939,7 @@ int click_items_handler(window_info *win, int mx, int my, Uint32 flags)
 			if(storage_items[storage_item_dragged].quantity<=item_quantity) storage_item_dragged=-1;
 		}
 		else if(item_list[pos].quantity){
-			if(ctrl_on){
+			if (ctrl_on && (items_mod_click_any_cursor || (item_action_mode==ACTION_WALK))) {
 				str[0]=DROP_ITEM;
 				str[1]=item_list[pos].pos;
 				if(item_list[pos].is_stackable)
@@ -930,7 +948,7 @@ int click_items_handler(window_info *win, int mx, int my, Uint32 flags)
 					*((Uint32 *)(str+2))=SDL_SwapLE32(36);//Drop all
 				my_tcp_send(my_socket, str, 6);
 				do_drop_item_sound();
-			} else if (alt_on && (item_action_mode == ACTION_WALK)) {
+			} else if (alt_on && (items_mod_click_any_cursor || (item_action_mode==ACTION_WALK))) {
 				if ((storage_win >= 0) && (get_show_window(storage_win)) && (view_only_storage == 0)) {
 					str[0]=DEPOSITE_ITEM;
 					str[1]=item_list[pos].pos;
@@ -1094,6 +1112,14 @@ int click_items_handler(window_info *win, int mx, int my, Uint32 flags)
 	return 1;
 }
 
+void set_description_help(int pos)
+{
+	Uint16 item_id = item_list[pos].id;
+	int image_id = item_list[pos].image_id;
+	if (show_item_desc_text && item_info_available() && (get_item_count(item_id, image_id) == 1))
+		item_desc_str = get_item_description(item_id, image_id);
+}
+
 int mouseover_items_handler(window_info *win, int mx, int my) {
 	int pos;
 	
@@ -1106,6 +1132,9 @@ int mouseover_items_handler(window_info *win, int mx, int my) {
 
 		if(pos==-1) {
 		} else if(item_list[pos].quantity){
+			set_description_help(pos);
+			if ((item_dragged == -1) && (items_mod_click_any_cursor || (item_action_mode==ACTION_WALK)))
+					item_help_str = mod_click_item_help_str;
 			if(item_action_mode==ACTION_LOOK) {
 				elwin_mouse=CURSOR_EYE;
 			} else if(item_action_mode==ACTION_USE) {
@@ -1115,10 +1144,9 @@ int mouseover_items_handler(window_info *win, int mx, int my) {
 				if (use_item!=-1)
 					item_help_str = multiuse_item_help_str;
 			} else {
-				if (item_dragged == -1)
-					item_help_str = pick_item_help_str;
 				elwin_mouse=CURSOR_PICK;
 			}
+			mouseover_item_pos = pos;
 			
 			return 1;
 		}
@@ -1128,6 +1156,7 @@ int mouseover_items_handler(window_info *win, int mx, int my) {
 		item_help_str = equip_here_str;
 		if(pos==-1) {
 		} else if(item_list[pos].quantity){
+			set_description_help(pos);
 			if(item_action_mode==ACTION_LOOK) {
 				elwin_mouse=CURSOR_EYE;
 			} else if(item_action_mode==ACTION_USE) {
@@ -1260,7 +1289,7 @@ static int context_items_handler(window_info *win, int widget_id, int mx, int my
 	{
 		case ELW_CM_MENU_LEN+1: manual_size_items_window = 1; show_items_handler(win); break;
 		case ELW_CM_MENU_LEN+2: show_items_handler(win); break;
-		case ELW_CM_MENU_LEN+6: send_input_text_line("#sto", 4); break;
+		case ELW_CM_MENU_LEN+7: send_input_text_line("#sto", 4); break;
 	}
 	return 1;
 }
@@ -1288,6 +1317,7 @@ void display_items_menu()
 		cm_bool_line(windows_list.window[items_win].cm_id, ELW_CM_MENU_LEN+2, &manual_size_items_window, NULL);
 		cm_bool_line(windows_list.window[items_win].cm_id, ELW_CM_MENU_LEN+3, &item_window_on_drop, "item_window_on_drop");
 		cm_bool_line(windows_list.window[items_win].cm_id, ELW_CM_MENU_LEN+4, &allow_equip_swap, NULL);
+		cm_bool_line(windows_list.window[items_win].cm_id, ELW_CM_MENU_LEN+5, &items_mod_click_any_cursor, NULL);
 				
 		cm_stoall_but = cm_create(inv_keeprow_str, NULL);
 		cm_bool_line(cm_stoall_but, 0, &items_stoall_nofirstrow, NULL);

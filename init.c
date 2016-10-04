@@ -34,6 +34,8 @@
 #include "gamewin.h"
 #include "gl_init.h"
 #include "hud.h"
+#include "hud_indicators.h"
+#include "hud_timer.h"
 #include "items.h"
 #include "item_lists.h"
 #include "keys.h"
@@ -47,6 +49,7 @@
 #include "astrology.h"
 #include "mapwin.h"
 #include "missiles.h"
+#include "named_colours.h"
 #include "new_actors.h"
 #include "openingwin.h"
 #include "particles.h"
@@ -230,7 +233,9 @@ void read_config()
 	if ( !read_el_ini () )
 	{
 		// oops, the file doesn't exist, give up
-		LOG_ERROR("Failure reading el.ini");
+		const char *err_stg = "Failure reading el.ini";
+		fprintf(stderr, "%s\n", err_stg);
+		LOG_ERROR(err_stg);
 		SDL_Quit ();
 		exit (1);
 	}
@@ -372,14 +377,7 @@ void read_bin_cfg()
 	rz=cfg_mem.camera_z;
 	new_zoom_level=zoom_level=cfg_mem.zoom_level;
 
-	// Needed for just one release, recover previous settings for player banners.
-	if (cfg_mem.unused_01 != 0 || cfg_mem.unused_02 != 0)
-	{
-		cfg_mem.banner_settings &= 1;
-		cfg_mem.banner_settings |= (cfg_mem.unused_01 << 2);
-		cfg_mem.banner_settings |= (cfg_mem.unused_02 << 3);
-		cfg_mem.unused_01 = cfg_mem.unused_02 = 0;
-	}
+	item_lists_set_active(cfg_mem.active_item_list);
 
 	view_health_bar=cfg_mem.banner_settings & 1;
 	view_ether_bar=(cfg_mem.banner_settings >> 1) & 1;
@@ -419,12 +417,17 @@ void read_bin_cfg()
 	disable_manuwin_keypress = (cfg_mem.misc_bool_options >> 15) & 1;
 	always_show_astro_details = (cfg_mem.misc_bool_options >> 16) & 1;
 	items_list_on_left = (cfg_mem.misc_bool_options >> 17) & 1;
+	items_mod_click_any_cursor = (cfg_mem.misc_bool_options >> 18) & 1;
+	disable_storage_filter = (cfg_mem.misc_bool_options >> 19) & 1;
+	hud_timer_keep_state = (cfg_mem.misc_bool_options >> 20) & 1;
 
 	set_options_user_menus(cfg_mem.user_menu_win_x, cfg_mem.user_menu_win_y, cfg_mem.user_menu_options);
 
 	floating_counter_flags = cfg_mem.floating_counter_flags;
 
 	set_options_questlog(cfg_mem.questlog_flags);
+
+	set_settings_hud_indicators(cfg_mem.hud_indicators_options, cfg_mem.hud_indicators_position);
 }
 
 void save_bin_cfg()
@@ -626,6 +629,8 @@ void save_bin_cfg()
 	cfg_mem.banner_settings |= view_hp << 3;
 	cfg_mem.banner_settings |= view_ether << 4;
 
+	cfg_mem.active_item_list = item_lists_get_active();
+
 	cfg_mem.quantity_selected=(quantities.selected<ITEM_EDIT_QUANT)?quantities.selected :0;
 
 	if(quickbar_relocatable>0)
@@ -677,12 +682,17 @@ void save_bin_cfg()
 	cfg_mem.misc_bool_options |= disable_manuwin_keypress << 15;
 	cfg_mem.misc_bool_options |= always_show_astro_details << 16;
 	cfg_mem.misc_bool_options |= items_list_on_left << 17;
+	cfg_mem.misc_bool_options |= items_mod_click_any_cursor << 18;
+	cfg_mem.misc_bool_options |= disable_storage_filter << 19;
+	cfg_mem.misc_bool_options |= hud_timer_keep_state << 20;
 
 	get_options_user_menus(&cfg_mem.user_menu_win_x, &cfg_mem.user_menu_win_y, &cfg_mem.user_menu_options);
 
 	cfg_mem.floating_counter_flags = floating_counter_flags;
 
 	cfg_mem.questlog_flags = get_options_questlog();
+
+	get_settings_hud_indicators(&cfg_mem.hud_indicators_options, &cfg_mem.hud_indicators_position);
 
 	fwrite(&cfg_mem,sizeof(cfg_mem),1,f);
 	fclose(f);
@@ -699,7 +709,7 @@ void init_texture_cache()
 void init_e3d_cache()
 {
 	//cache_e3d= cache_init(1000, &destroy_e3d);	//TODO: autofree the name as well
-	cache_e3d = cache_init("E3d cache", 1000, NULL);	//no aut- free permitted
+	cache_e3d = cache_init("E3d cache", 1500, NULL);	//no aut- free permitted
 	cache_set_compact(cache_e3d, &free_e3d_va);	// to compact, free VA arrays
 	cache_set_time_limit(cache_e3d, 5*60*1000);
 	cache_set_size_limit(cache_e3d, 8*1024*1024);
@@ -734,6 +744,10 @@ void init_stuff()
 	load_server_list("servers.lst");
 	set_server_details();
 
+#ifdef NEW_SOUND
+	initial_sound_init();
+#endif
+
 	// Read the config file
 	read_config();
 
@@ -760,6 +774,9 @@ void init_stuff()
 	// is read.
 	init_chat_channels ();
 
+	// load the named colours for the elgl-Colour-() functions
+	init_named_colours();
+
 	// initialize the fonts, but don't load the textures yet. Do that here
 	// because the messages need the font widths.
 	init_fonts();
@@ -776,6 +793,7 @@ void init_stuff()
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE) == -1)
 		{
 			LOG_ERROR("%s: %s\n", no_sdl_str, SDL_GetError());
+			fprintf(stderr, "%s: %s\n", no_sdl_str, SDL_GetError());
 			SDL_Quit();
 			exit(1);
 		}
@@ -800,7 +818,13 @@ void init_stuff()
 	init_2d_obj_cache();
 #endif
 	//now load the font textures
-	load_font_textures ();
+	if (load_font_textures () != 1)
+	{
+		LOG_ERROR("%s\n", fatal_data_error);
+		fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, fatal_data_error);
+		SDL_Quit();
+		exit(1);
+	}
 	CHECK_GL_ERRORS();
 
 	// read the continent map info
@@ -866,7 +890,6 @@ void init_stuff()
 	init_particles ();
 #ifdef NEW_SOUND
 	update_loading_win(init_audio_str, 1);
-	initial_sound_init();
 	load_sound_config_data(SOUND_CONFIG_PATH);
 #endif // NEW_SOUND
 	update_loading_win(init_actor_defs_str, 4);
@@ -998,6 +1021,7 @@ void init_stuff()
 	update_loading_win(init_network_str, 5);
 	if(SDLNet_Init()<0){
 		LOG_ERROR("%s: %s\n", failed_sdl_net_init, SDLNet_GetError());
+		fprintf(stderr, "%s: %s\n", failed_sdl_net_init, SDLNet_GetError());
 		SDLNet_Quit();
 		SDL_Quit();
 		exit(2);
@@ -1006,11 +1030,14 @@ void init_stuff()
 
 	if(SDL_InitSubSystem(SDL_INIT_TIMER)<0){
 		LOG_ERROR("%s: %s\n", failed_sdl_timer_init, SDL_GetError());
+		fprintf(stderr, "%s: %s\n", failed_sdl_timer_init, SDL_GetError());
 		SDL_Quit();
 	 	exit(1);
 	}
 	update_loading_win(load_encyc_str, 5);
 	safe_snprintf(file_name, sizeof(file_name), "languages/%s/Encyclopedia/index.xml", lang);
+	if (!el_file_exists(file_name))
+		safe_snprintf(file_name, sizeof(file_name), "languages/%s/Encyclopedia/index.xml", "en");
 	ReadXML(file_name);
 	read_key_config();
 	init_buddy();
@@ -1033,12 +1060,15 @@ void init_stuff()
 	have_rules=read_rules();
 	if(!have_rules){
 		LOG_ERROR(rules_not_found);
+		fprintf(stderr, "%s\n", rules_not_found);
 		SDL_Quit();
 		exit(3);
 	}
 
 	//initiate function pointers
 	init_attribf();
+
+	init_statsinfo_array();
 
 	//Read the books for i.e. the new char window
 	init_books();

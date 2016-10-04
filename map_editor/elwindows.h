@@ -3,6 +3,10 @@
 
 #include <SDL_types.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * A simple window handler setup to reduce the code needed to do windows
  *
@@ -138,7 +142,7 @@ extern	windows_info	windows_list;
 #define	SCREEN	0
 
 // windows manager function
-void	display_windows();
+void	display_windows(int level);
 int		click_in_windows(int _x, int _y, Uint32 flags);
 int		drag_windows(int _x, int _y, int dx, int dy);
 void	end_drag_windows();
@@ -179,6 +183,10 @@ int	draw_window_base(window_info *win);	// border & background
 //int	display_handler(window_info *win);
 //int	click_handler(window_info *win);
 //int	mouseover_handler(window_info *win);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif	//__EL_WINDOWS_H
 

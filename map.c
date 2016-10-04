@@ -153,7 +153,7 @@ static __inline__ void build_path_map()
 	int i, x, y;
 
 	//create the tile map that will be used for pathfinding
-	pf_tile_map = (PF_TILE *)calloc(tile_map_size_x*tile_map_size_y*6*6, sizeof(PF_TILE));
+	pf_tile_map = calloc(tile_map_size_x*tile_map_size_y*6*6, sizeof(PF_TILE));
 
 	i = 0;
 	for (y = 0; y < tile_map_size_y*6; y++)
@@ -310,10 +310,10 @@ int load_empty_map()
 		ambient_r = 0;
 		ambient_g = 0;
 		ambient_b = 0;
-		tile_map = calloc(tile_map_size_x*tile_map_size_y, sizeof(char));
-		height_map = calloc(tile_map_size_x*tile_map_size_y*6*6, sizeof(char));
+		tile_map = calloc(tile_map_size_x*tile_map_size_y, sizeof(unsigned char));
+		height_map = calloc(tile_map_size_x*tile_map_size_y*6*6, sizeof(unsigned char));
 #ifndef MAP_EDITOR2
-		pf_tile_map = calloc(tile_map_size_x*tile_map_size_y*6*6, sizeof(char));
+		pf_tile_map = calloc(tile_map_size_x*tile_map_size_y*6*6, sizeof(PF_TILE));
 #endif
 		return 0;
 	}
@@ -398,7 +398,7 @@ void load_marks_to_buffer(char* mapname, marking* buffer, int* max)
 				buffer[*max].g=g;
 				buffer[*max].b=b;
 				*max = *max + 1;
-				if ( *max > MAX_USER_MARKS ) break;
+				if ( *max >= MAX_USER_MARKS ) break;
 			}
 		}
 	}
@@ -546,6 +546,16 @@ void init_buffers()
 	init_water_buffers(water_buffer_size);
 	init_terrain_buffers(terrain_buffer_size);
 	init_reflection_portals(water_buffer_size);
+}
+
+void free_buffers()
+{
+	if (water_tile_buffer)
+		free(water_tile_buffer);
+	if (terrain_tile_buffer)
+		free(terrain_tile_buffer);
+	if (reflection_portals)
+		free(reflection_portals);
 }
 
 int get_3d_objects_from_server (int nr_objs, const Uint8 *data, int len)

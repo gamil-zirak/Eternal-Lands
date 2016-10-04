@@ -6,7 +6,7 @@
 #ifndef	__HUD_H
 #define	__HUD_H
 
-#include "elwindows.h"
+#include <SDL_types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,36 +26,6 @@ extern "C" {
 /*! @{ */
 #define MAX_QUICKBAR_SLOTS 12
 /*! @} */
-
-/*!
- * structure to store the data and event handlers for an icon
- */
-typedef struct
-{
-	int state; /*!< the state of the icon, some icons are toggable */
-	/*!
-	 * \name icon image position
-	 */
-	/*! @{ */
-	float u[2];
-	float v[2];
-	/*! @} */
-
-	char * help_message; /*!< icon help message */
-    
-	/*!
-	 * \name Function pointer and data
-	 */
-	/*! @{ */
-	int (*func)(void*, int);
-	void * data;
-	/*! @} */
-
-	char data_type; /*!< data type indicator for \a data */
-	char free_data; /*!< inidicator whether to free the data after use or not */
-	Uint32 flashing;  /*!< if non-zero, the number times left to flash */
-	Uint32 last_flash_change; /*!< if flashing, the time the state last changed */
-} icon_struct;
 
 typedef enum
 {
@@ -90,12 +60,16 @@ extern int 	quickbar_relocatable; /*!< flag that indicates whether the quickbar 
  */
 void init_quickbar();
 
+void switch_action_mode(int * mode, int id);
+
+extern int hud_text;
 extern int hud_x;
 extern int hud_y;
 
 extern int view_analog_clock;
 extern int view_digital_clock;
 extern int view_knowledge_bar;
+extern int view_hud_timer;
 
 extern int quickbar_x;
 extern int quickbar_y;
@@ -104,6 +78,9 @@ extern int quickbar_draggable;
 extern int num_quickbar_slots;
 
 extern int copy_next_LOCATE_ME;
+
+extern int show_help_text;
+extern int always_enlarge_text;
 
 // the main hud handling
 
@@ -125,6 +102,14 @@ int action_item_keys(Uint32 key);
  * \callgraph
  */
 void init_hud_interface (hud_interface type);
+
+/*!
+ * \ingroup other
+ * \brief Called on client exit - free memory and generally clean up
+ *
+ * \callgraph
+ */
+void cleanup_hud(void);
 
 /*!
  * \ingroup other
@@ -180,42 +165,20 @@ int check_hud_interface();
  */
 void draw_hud_frame();
 
-// icons subsection
-
 /*!
  * \ingroup windows
- * \brief Frees the data used by the icons.
+ * \brief Get the window ID pointer using the name string
  *
- *      Frees the data used by \ref icon_list.
- */
-void free_icons();
-
-/*!
- * \ingroup windows
- * \brief Flash an icon.
+ * \param name		the name of the window
  *
- *      Makes the specified icon flash between pressed/not press state.
+ *	returns if sucessful, a pointer to the window id variable, otherwise NULL.
  * 
- * \param	title	the help text of the icon (to find it in the list).
- * \param	seconds	The number of seconds to flash.
- *
  * \callgraph
  */
-void flash_icon(const char* name, Uint32 seconds);
+ int* get_winid(const char *name);
 
 
 //Functions for the function pointers
-
-/*!
- * \ingroup windows
- * \brief Sends the sit down command to the server.
- *
- *      Sends the \ref SIT_DOWN command to the server, causing the actor to either sit down or stand up, depending on the value of \ref you_sit.
- *
- * \param unused    unused
- * \param id        unused
- */
-void sit_button_pressed(void *unused, int id);
 
 /*!
  * \ingroup windows
@@ -289,6 +252,21 @@ void show_help(const char *message, int x, int y);
 
 /*!
  * \ingroup windows
+ * \brief Shows the \a message at the given position (\a x, \a y).
+ *
+ *      Shows the \a message at the given position (\a x, \a y).
+ *
+ * \param message   the help message to show
+ * \param x         the x coordinate of the position to draw the help message
+ * \param y         the y coordinate of the position to draw the help message
+ * \param big       if zero use the small font, otherwise the default
+ *
+ * \callgraph
+ */
+void show_sized_help(const char *message, int x, int y, int big);
+
+/*!
+ * \ingroup windows
  * \brief Shows the \a message at the given position and colour (\a x, \a y).
  *
  *      Shows the \a message at the given position and colour (\a x, \a y).
@@ -303,6 +281,40 @@ void show_help(const char *message, int x, int y);
  * \callgraph
  */
 void show_help_coloured(const char *help_message, int x, int y, float r, float g, float b);
+
+
+/*!
+ * \ingroup windows
+ * \brief Shows the \a message at the given position and colour (\a x, \a y).
+ *
+ *      Shows the \a message at the given position and colour (\a x, \a y).
+ *
+ * \param message   the help message to show
+ * \param x         the x coordinate of the position to draw the help message
+ * \param y         the y coordinate of the position to draw the help message
+ * \param r         the red RGB value for text
+ * \param g         the green RGB value for text
+ * \param b         the blue RGB value for text
+ * \param big       if zero use the small font, otherwise the default
+ *
+ * \callgraph
+ */
+void show_sized_help_coloured(const char *help_message, int x, int y, float r, float g, float b, int big);
+
+/*!
+ * \ingroup windows
+ * \brief Check if we need to enlarge text.
+ *
+ *      If the "Always Enlarge Text" option on the HUB tab is set, return
+ *      true.  Otherwise test if either Ctrl or Alt is pressed and return
+ *      true if one of those is set.
+ *
+ *	returns true if text should be enlarged.
+ * 
+ * \callgraph
+ */
+int enlarge_text(void);
+
 
 //stats/health section
 

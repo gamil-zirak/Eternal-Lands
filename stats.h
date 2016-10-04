@@ -220,11 +220,21 @@ struct stats_struct
 	int is_selected;
 };
 
-extern struct stats_struct statsinfo[];
+/*!
+ * Indexes for plat stats arrays
+ */
+enum { SI_ATT = 0, SI_DEF, SI_HAR, SI_ALC, SI_MAG, SI_POT, SI_SUM, SI_MAN, SI_CRA, SI_ENG, SI_TAI, SI_RAN, SI_ALL };
 
+/*!
+ * An array of pointers to the player stats information - enables looping rather than duplicate code.
+ */
+extern struct stats_struct statsinfo[];
+extern Uint32 last_exp[];
+
+#define NUM_SKILLS 13		/*!< the number of skills */
 #define	NUM_WATCH_STAT	14	/*!< allow watching stats 0-13 */
 #define MAX_WATCH_STATS	5	/*!< max number of stats watchable in hud */
-	
+
 extern int attrib_menu_x;
 extern int attrib_menu_y;
 
@@ -277,6 +287,7 @@ void fill_stats_win ();
 extern int floatingmessages_enabled;
 void drawactor_floatingmessages(int actor_id, float healthbar_z);
 void add_floating_message(int actor_id, char * str, int direction, float r, float g, float b, int active_time);
+void init_statsinfo_array(void);
 
 /*
  * decide if/where to display the given stat in the hud

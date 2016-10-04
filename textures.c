@@ -1358,6 +1358,7 @@ static void load_enhanced_actor_threaded(const enhanced_actor_images_t* files,
 	el_file_ptr legs_base;
 	el_file_ptr boots_base;
 	el_file_ptr hair_tex;
+	el_file_ptr eyes_tex;
 	el_file_ptr weapon_tex;
 	el_file_ptr shield_tex;
 	el_file_ptr helmet_tex;
@@ -1388,6 +1389,7 @@ static void load_enhanced_actor_threaded(const enhanced_actor_images_t* files,
 	legs_base = 0;
 	boots_base = 0;
 	hair_tex = 0;
+	eyes_tex = 0;
 	weapon_tex = 0;
 	shield_tex = 0;
 	helmet_tex = 0;
@@ -1461,6 +1463,11 @@ static void load_enhanced_actor_threaded(const enhanced_actor_images_t* files,
 	{
 		open_for_coordinates(files->hair_tex, &hair_tex,
 			34, 48, &sizes, &format);
+	}
+	if (files->eyes_tex[0])
+	{
+		open_for_coordinates(files->eyes_tex, &eyes_tex,
+			6, 6, &sizes, &format);
 	}
 	if (files->weapon_tex[0])
 	{
@@ -1586,6 +1593,11 @@ static void load_enhanced_actor_threaded(const enhanced_actor_images_t* files,
 		alpha += load_to_coordinates(hair_tex, 0, 0, 34, 48,
 			use_compressed_image, scale, image);
 	}
+	if (eyes_tex != 0)
+	{
+		alpha += load_to_coordinates(eyes_tex, 50, 32, 6, 6,
+			use_compressed_image, scale, image);
+	}
 	if (weapon_tex != 0)
 	{
 		alpha += load_to_coordinates(weapon_tex, 89, 38, 39, 36,
@@ -1663,6 +1675,7 @@ Uint32 load_enhanced_actor(const enhanced_actor* actor, const char* name)
 	copy_enhanced_actor_file_name(files.boots_base, actor->boots_base);
 
 	copy_enhanced_actor_file_name(files.hair_tex, actor->hair_tex);
+	copy_enhanced_actor_file_name(files.eyes_tex, actor->eyes_tex);
 	copy_enhanced_actor_file_name(files.weapon_tex, actor->weapon_tex);
 	copy_enhanced_actor_file_name(files.shield_tex, actor->shield_tex);
 	copy_enhanced_actor_file_name(files.helmet_tex, actor->helmet_tex);
@@ -1801,6 +1814,8 @@ Uint32 bind_actor_texture(const Uint32 handle, char* alpha)
 	GLuint id;
 	GLenum min_filter;
 	texture_format_type format;
+
+	af = 0;
 
 	if (handle >= ACTOR_TEXTURE_CACHE_MAX)
 	{
@@ -2069,6 +2084,7 @@ void change_enhanced_actor(const Uint32 handle, enhanced_actor* actor)
 	copy_enhanced_actor_file_name(files.boots_base, actor->boots_base);
 
 	copy_enhanced_actor_file_name(files.hair_tex, actor->hair_tex);
+	copy_enhanced_actor_file_name(files.eyes_tex, actor->eyes_tex);
 	copy_enhanced_actor_file_name(files.weapon_tex, actor->weapon_tex);
 	copy_enhanced_actor_file_name(files.shield_tex, actor->shield_tex);
 	copy_enhanced_actor_file_name(files.helmet_tex, actor->helmet_tex);
@@ -2283,6 +2299,7 @@ void free_texture_cache()
 	free(texture_handles);
 
 	cache_delete(texture_cache);
+	texture_cache = NULL;
 }
 
 void unload_texture_cache()
@@ -2682,10 +2699,17 @@ void	texture_overlay(texture_struct *tex, texture_struct *blend)
 
 			alpha= btexture_mem[texture_offset+3];
 			if(alpha > 0){
+/* This makes no sense to me and I assume the following is meant but maybe someone more familiar with this code should look into it.
+
 				texture_mem[texture_offset]= texture_mem[texture_offset];
 				texture_mem[texture_offset+1]= texture_mem[texture_offset+1];
 				texture_mem[texture_offset+2]= texture_mem[texture_offset+2];
 				texture_mem[texture_offset+3]= texture_mem[texture_offset+3];
+*/
+				texture_mem[texture_offset]= btexture_mem[texture_offset];
+				texture_mem[texture_offset+1]= btexture_mem[texture_offset+1];
+				texture_mem[texture_offset+2]= btexture_mem[texture_offset+2];
+				texture_mem[texture_offset+3]= btexture_mem[texture_offset+3];
 			}
 		}
 	}
@@ -3477,6 +3501,8 @@ int load_bmp8_enhanced_actor(enhanced_actor *this_actor, Uint8 a)
 	}
 	if(this_actor->hair_tex[0])
 		has_alpha+= load_bmp8_to_coordinates(this_actor->hair_tex,texture_mem,0,0,a);
+	if(this_actor->eyes_tex[0])
+		has_alpha+= load_bmp8_to_coordinates(this_actor->eyes_tex,texture_mem,100*TEXTURE_RATIO,64*TEXTURE_RATIO,a);
 	if(this_actor->weapon_tex[0])
 		has_alpha+= load_bmp8_to_coordinates(this_actor->weapon_tex,texture_mem,178*TEXTURE_RATIO,77*TEXTURE_RATIO,a);
 	if(this_actor->shield_tex[0])

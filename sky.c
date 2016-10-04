@@ -135,7 +135,7 @@ int sun_tex;
 
 sky_dome create_dome(int slices, int stacks, float radius, float opening, int fake_opening, float first_angle, float texture_size)
 {
-	sky_dome dome;
+	sky_dome dome = {0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL, 0.0, 0.0, 0.0};
     int i, j;
     float angle, angle_step;
     int idx, vtx_idx;
@@ -2363,7 +2363,7 @@ int skybox_read_defs(const char *file_name, const char *map_name)
 	xmlDoc *doc;
 	int ok = 1;
 
-	doc = xmlReadFile(file_name, NULL, 0);
+	doc = xmlReadFile(file_name, NULL, XML_PARSE_NOENT);
 	if (doc == NULL) {
 		LOG_ERROR("Unable to read skybox definition file %s", file_name);
 		return 0;
@@ -2649,5 +2649,17 @@ void skybox_init_gl()
 		dome_clouds_tex_coords_bis[idx] = dome_clouds.tex_coords[idx];
 		dome_clouds_tex_coords_bis[idx+1] = dome_clouds.tex_coords[idx+1]+0.5;
 	}
+}
+
+void free_skybox()
+{
+	destroy_dome(&dome_sky);
+	destroy_dome(&dome_clouds);
+	destroy_sphere(&moon_mesh);
+	if (dome_clouds_detail_colors) free(dome_clouds_detail_colors);
+	if (dome_clouds_colors_bis) free(dome_clouds_colors_bis);
+	if (dome_clouds_detail_colors_bis) free(dome_clouds_detail_colors_bis);
+	if (dome_clouds_tex_coords_bis) free(dome_clouds_tex_coords_bis);
+	if (fog_colors) free(fog_colors);
 }
 

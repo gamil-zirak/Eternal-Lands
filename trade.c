@@ -7,12 +7,14 @@
 #include "init.h"
 #include "interface.h"
 #include "items.h"
+#include "item_info.h"
 #include "manufacture.h"
 #include "multiplayer.h"
 #include "spells.h"
 #include "storage.h"
 #include "string.h"
 #include "textures.h"
+#include "trade_log.h"
 #include "translate.h"
 #ifdef OPENGL_TRACE
 #include "gl_init.h"
@@ -39,6 +41,9 @@ int trade_menu_x_len=9*33+20;
 int trade_menu_y_len=4*33+115;
 static int button_y_top = 4*33+40;
 static int button_y_bot = 4*33+60;
+static const char *tool_tip_str = NULL;
+static int mouse_over_your_trade_pos = -1;
+static int mouse_over_others_trade_pos = -1;
 
 
 int show_abort_help=0;
@@ -125,7 +130,10 @@ int display_trade_handler(window_info *win)
 			glEnd();
 			
 			safe_snprintf(str, sizeof(str), "%i",your_trade_list[i].quantity);
-			draw_string_small_shadowed(x_start,(i&1)?(y_end-12):(y_end-22),(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
+			if ((mouse_over_your_trade_pos == i) && enlarge_text())
+				draw_string_shadowed(x_start,(i&1)?(y_end-12):(y_end-22),(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
+			else
+				draw_string_small_shadowed(x_start,(i&1)?(y_end-12):(y_end-22),(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
 			//by doing the images in reverse, you can't cover up the digits>4
 			//also, by offsetting each one, numbers don't overwrite each other:
 			//before: 123456 in one box and 56 in the other could allow
@@ -135,6 +143,7 @@ int display_trade_handler(window_info *win)
 			//                 stopping potential scams
 		}
 	}
+	mouse_over_your_trade_pos = -1;
 
 	for(i=16; i>=0; --i){
 		if(others_trade_list[i].quantity){
@@ -175,7 +184,10 @@ int display_trade_handler(window_info *win)
 			glEnd();
 			
 			safe_snprintf(str, sizeof(str), "%i",others_trade_list[i].quantity);
-			draw_string_small_shadowed(x_start,(!(i&1))?(y_end-12):(y_end-22),(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
+			if ((mouse_over_others_trade_pos == i) && enlarge_text())
+				draw_string_shadowed(x_start,(!(i&1))?(y_end-12):(y_end-22),(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
+			else
+				draw_string_small_shadowed(x_start,(!(i&1))?(y_end-12):(y_end-22),(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
 
 			if(storage_available && others_trade_list[i].type==ITEM_BANK){
 				str[0]='s';
@@ -186,6 +198,7 @@ int display_trade_handler(window_info *win)
 			}
 		}
 	}
+	mouse_over_others_trade_pos = -1;
 	
 	glDisable(GL_TEXTURE_2D);
 	
@@ -233,6 +246,13 @@ int display_trade_handler(window_info *win)
 		last_items_string_id = inventory_item_string_id;
 	}
 	draw_string_small(4,button_y_bot+5,(unsigned char*)items_string,3);
+
+	if (tool_tip_str != NULL)
+	{
+		show_help(tool_tip_str, 0, win->len_y+10);
+		tool_tip_str = NULL;
+	}
+
 #ifdef OPENGL_TRACE
 CHECK_GL_ERRORS();
 #endif //OPENGL_TRACE
@@ -333,10 +353,10 @@ int click_trade_handler(window_info *win, int mx, int my, Uint32 flags)
 			str[0]= ACCEPT_TRADE;
 			if(trade_you_accepted==1){
 				int i;
-			
 				for(i=0;i<16;i++){
 					str[i+1]=(others_trade_list[i].quantity>0)*others_trade_list[i].type;
 				}
+				trade_accepted(other_player_trade_name, your_trade_list, others_trade_list, 16);
 			}
 			my_tcp_send(my_socket, str, 17);
 			do_click_sound();
@@ -358,12 +378,35 @@ int click_trade_handler(window_info *win, int mx, int my, Uint32 flags)
 
 int mouseover_trade_handler(window_info *win, int mx, int my) 
 {
+	int pos = -1;
+	trade_item *over_item = NULL;
+
 	if(mx>win->len_x-ELW_BOX_SIZE && my<ELW_BOX_SIZE) show_abort_help=1;
 	else show_abort_help=0;
 
-	if (show_help_text && *inventory_item_string && (my > button_y_bot+5)) {
-		show_help((disable_double_click)?click_clear_str :double_click_clear_str, 0, win->len_y+10);
+	if (show_help_text && *inventory_item_string && (my > button_y_bot+5))
+	{
+		tool_tip_str = (disable_double_click)?click_clear_str :double_click_clear_str;
+		return 0;
 	}
+
+	pos=get_mouse_pos_in_grid (mx, my, 4, 4, 10, 30, 33, 33);
+	if (pos >= 0 && your_trade_list[pos].quantity)
+	{
+		over_item = &your_trade_list[pos];
+		mouse_over_your_trade_pos = pos;
+	}
+	else {
+		pos=get_mouse_pos_in_grid(mx, my, 4, 4, 10+5*33, 30, 33, 33);
+		if (pos >= 0 && others_trade_list[pos].quantity)
+		{
+			over_item = &others_trade_list[pos];
+			mouse_over_others_trade_pos = pos;
+		}
+	}
+
+	if (show_item_desc_text && (over_item != NULL) && item_info_available() && (get_item_count(over_item->id, over_item->image_id) == 1))
+		tool_tip_str = get_item_description(over_item->id, over_item->image_id);
 
 	return 0;
 }

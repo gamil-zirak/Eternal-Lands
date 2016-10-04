@@ -14,33 +14,38 @@
 #include "gamewin.h"
 #include "gl_init.h"
 #include "global.h"
+#include "hud_indicators.h"
+#include "hud_timer.h"
+#include "icon_window.h"
 #include "init.h"
 #include "interface.h"
 #include "items.h"
+#include "item_info.h"
 #include "keys.h" //Avoid problems with SHIFT, ALT, CTRL
 #include "knowledge.h"
 #include "manufacture.h"
 #include "mapwin.h"
+#include "minimap.h"
 #include "missiles.h"
 #include "multiplayer.h"
 #include "new_character.h"
+#include "notepad.h"
 #include "platform.h"
 #include "questlog.h"
 #include "sound.h"
 #include "spells.h"
+#include "stats.h"
 #include "storage.h"
 #include "tabs.h"
 #include "textures.h"
 #include "trade.h"
 #include "translate.h"
-#include "minimap.h"
 #ifdef ECDEBUGWIN
 #include "eye_candy_debugwin.h"
 #endif
 #include "user_menus.h"
 #include "url.h"
 #include "emotes.h"
-
 
 #define WALK 0
 #define SIT 1
@@ -49,25 +54,11 @@
 #define ATTACK 4
 #define USE 5
 
-#define DATA_NONE -1
-#define DATA_WINDOW 0
-#define DATA_ACTIONMODE 1
-#define DATA_MODE 2
-
-#define STATE(I) (icon_list[I]->state&0x0F)
-#define PRESSED (1|(1<<31))
-#define NOT_ACTIVE 0
-
-icon_struct * icon_list[30]={NULL};
-int icons_no=0;
 Uint32 exp_lev[200];
 #ifdef NEW_NEW_CHAR_WINDOW
 hud_interface last_interface = HUD_INTERFACE_NEW_CHAR; //Current interface (game or new character)
 #endif
 
-int	display_icons_handler(window_info *win);
-int	click_icons_handler(window_info *win, int mx, int my, Uint32 flags);
-int	mouseover_icons_handler(window_info *win, int mx, int my);
 int	display_stats_bar_handler(window_info *win);
 int	display_misc_handler(window_info *win);
 int	click_misc_handler(window_info *win, int mx, int my, Uint32 flags);
@@ -77,10 +68,6 @@ int	click_quickbar_handler(window_info *win, int mx, int my, Uint32 flags);
 int	mouseover_quickbar_handler(window_info *win, int mx, int my);
 int	mouseover_stats_bar_handler(window_info *win, int mx, int my);
 void init_hud_frame();
-void init_newchar_icons();
-void init_peace_icons();
-void add_icon(float u_start, float v_start, float colored_u_start, float colored_v_start, char * help_message, void * func, void * data, char data_type);
-void switch_action_mode(int * mode, int id);
 void init_stats_display();
 void draw_exp_display();
 void draw_stats();
@@ -102,8 +89,8 @@ static int cm_sound_enabled = 0;
 static int cm_music_enabled = 0;
 static int cm_minimap_shown = 0;
 static int cm_rangstats_shown = 0;
-enum {	CMH_STATS=0, CMH_STATBARS, CMH_KNOWBAR, CMH_DIGCLOCK, CMH_ANACLOCK,
-		CMH_SECONDS, CMH_FPS, CMH_QUICKBM, CMH_SEP1, CMH_MINIMAP, CMH_RANGSTATS,
+enum {	CMH_STATS=0, CMH_STATBARS, CMH_KNOWBAR, CMH_TIMER, CMH_DIGCLOCK, CMH_ANACLOCK,
+		CMH_SECONDS, CMH_FPS, CMH_INDICATORS, CMH_QUICKBM, CMH_SEP1, CMH_MINIMAP, CMH_RANGSTATS,
 		CMH_SEP2, CMH_SOUND, CMH_MUSIC, CMH_SEP3, CMH_LOCATION };
 enum {	CMQB_RELOC=0, CMQB_DRAG, CMQB_RESET, CMQB_FLIP, CMQB_ENABLE };
 
@@ -113,20 +100,19 @@ int hud_text;
 int view_analog_clock= 1;
 int view_digital_clock= 0;
 int view_knowledge_bar = 1;
+int view_hud_timer = 1;
 int copy_next_LOCATE_ME = 0;
-int	icons_win= -1;
 int	stats_bar_win= -1;
 int	misc_win= -1;
 int	quickbar_win= -1;
 int	quickspell_win= -1;
 int show_help_text=1;
+int always_enlarge_text=1;
 
 int qb_action_mode=ACTION_USE;
 
 int show_stats_in_hud=0;
 int show_statbars_in_hud=0;
-
-struct stats_struct statsinfo[NUM_WATCH_STAT-1];
 
 static int first_disp_stat = 0;					/* first skill that will be display */
 static int num_disp_stat = NUM_WATCH_STAT-1;		/* number of skills to be displayed */
@@ -138,6 +124,19 @@ static int mouse_over_knowledge_bar = 0;			/* 1 if mouse is over the knowledge b
 
 static const int knowledge_bar_height = SMALL_FONT_Y_LEN + 6;
 static const int stats_bar_height = SMALL_FONT_Y_LEN;
+
+static int mouseover_quickbar_item_pos = -1;
+
+/* called on client exit to free resources */
+void cleanup_hud(void)
+{
+	destroy_timer();
+	destroy_hud_indicators();
+	destroy_window(misc_win);
+	destroy_window(stats_bar_win);
+	destroy_window(quickbar_win);
+	stats_bar_win = quickbar_win = misc_win = -1;
+}
 
 
 /* #exp console command, display current exp information */
@@ -180,8 +179,7 @@ void init_hud_interface (hud_interface type)
 		hud_x=270;
 		resize_root_window();
 #endif
-		free_icons ();
-		init_newchar_icons ();
+		init_icon_window (NEW_CHARACTER_ICONS);
 	}
 	else
 	{
@@ -190,11 +188,11 @@ void init_hud_interface (hud_interface type)
 			hud_x=HUD_MARGIN_X;
 		resize_root_window();
 #endif
-		free_icons ();
-		init_peace_icons ();
+		init_icon_window (MAIN_WINDOW_ICONS);
 		init_stats_display ();
 		init_quickbar ();
 		init_quickspell ();
+		init_hud_indicators (); 
 		ready_for_user_menus = 1;
 		if (enable_user_menus)
 			display_user_menus();
@@ -212,6 +210,7 @@ void show_hud_windows ()
 	if (misc_win >= 0) show_window (misc_win);
 	if (quickbar_win >= 0) show_window (quickbar_win);
 	if (quickspell_win >= 0) show_window (quickspell_win);
+	show_hud_indicators_window();
 }
 
 void hide_hud_windows ()
@@ -221,6 +220,7 @@ void hide_hud_windows ()
 	if (misc_win >= 0) hide_window (misc_win);
 	if (quickbar_win >= 0) hide_window (quickbar_win);
 	if (quickspell_win >= 0) hide_window (quickspell_win);
+	hide_hud_indicators_window();
 }
 
 // draw everything related to the hud
@@ -305,576 +305,6 @@ CHECK_GL_ERRORS();
 #endif //OPENGL_TRACE
 }
 
-
-// the icons section
-#ifdef	NEW_TEXTURES
-float walk_icon_u_start = (float)0/256;
-float walk_icon_v_start = (float)0/256;
-
-float colored_walk_icon_u_start = (float)64/256;
-float colored_walk_icon_v_start = (float)64/256;
-
-float eye_icon_u_start = (float)64/256;
-float eye_icon_v_start = (float)0/256;
-
-float colored_eye_icon_u_start = (float)128/256;
-float colored_eye_icon_v_start = (float)64/256;
-
-float use_with_item_icon_u_start = (float)224/256;
-float use_with_item_icon_v_start = (float)160/256;
-
-float colored_use_with_item_icon_u_start = (float)192/256;
-float colored_use_with_item_icon_v_start = (float)160/256;
-
-
-float emotes_icon_u_start = (float)160/256;
-float emotes_icon_v_start = (float)160/256;
-
-float colored_emotes_icon_u_start = (float)128/256;
-float colored_emotes_icon_v_start = (float)160/256;
-
-
-float trade_icon_u_start = (float)128/256;
-float trade_icon_v_start = (float)0/256;
-
-float colored_trade_icon_u_start = (float)192/256;
-float colored_trade_icon_v_start = (float)64/256;
-
-float sit_icon_u_start = (float)224/256;
-float sit_icon_v_start = (float)0/256;
-
-float colored_sit_icon_u_start = (float)32/256;
-float colored_sit_icon_v_start = (float)96/256;
-
-float stand_icon_u_start = (float)0/256;
-float stand_icon_v_start = (float)32/256;
-
-float colored_stand_icon_u_start = (float)64/256;
-float colored_stand_icon_v_start = (float)96/256;
-
-float spell_icon_u_start = (float)32/256;
-float spell_icon_v_start = (float)32/256;
-
-float colored_spell_icon_u_start = (float)96/256;
-float colored_spell_icon_v_start = (float)96/256;
-
-float inventory_icon_u_start = (float)96/256;
-float inventory_icon_v_start = (float)32/256;
-
-float colored_inventory_icon_u_start = (float)160/256;
-float colored_inventory_icon_v_start = (float)96/256;
-
-float manufacture_icon_u_start = (float)128/256;
-float manufacture_icon_v_start = (float)32/256;
-
-float colored_manufacture_icon_u_start = (float)0/256;
-float colored_manufacture_icon_v_start = (float)128/256;
-
-float stats_icon_u_start = (float)160/256;
-float stats_icon_v_start = (float)32/256;
-
-float colored_stats_icon_u_start = (float)32/256;
-float colored_stats_icon_v_start = (float)128/256;
-
-float options_icon_u_start = (float)192/256;
-float options_icon_v_start = (float)32/256;
-
-float colored_options_icon_u_start = (float)64/256;
-float colored_options_icon_v_start = (float)128/256;
-
-float use_icon_u_start = (float)224/256;
-float use_icon_v_start = (float)32/256;
-
-float colored_use_icon_u_start = (float)96/256;
-float colored_use_icon_v_start = (float)128/256;
-
-float attack_icon_u_start = (float)160/256;
-float attack_icon_v_start = (float)0/256;
-
-float colored_attack_icon_u_start = (float)224/256;
-float colored_attack_icon_v_start = (float)64/256;
-
-float knowledge_icon_u_start = (float)96/256;
-float knowledge_icon_v_start = (float)64/256;
-
-float colored_knowledge_icon_u_start = (float)160/256;
-float colored_knowledge_icon_v_start = (float)64/256;
-
-float encyclopedia_icon_u_start = (float)0/256;
-float encyclopedia_icon_v_start = (float)64/256;
-
-float colored_encyclopedia_icon_u_start = (float)32/256;
-float colored_encyclopedia_icon_v_start = (float)64/256;
-
-float questlog_icon_u_start = (float)96/256;
-float questlog_icon_v_start = (float)64/256;
-
-float colored_questlog_icon_u_start = (float)160/256;
-float colored_questlog_icon_v_start = (float)64/256;
-
-float map_icon_u_start = (float)128/256;
-float map_icon_v_start = (float)128/256;
-
-float colored_map_icon_u_start = (float)160/256;
-float colored_map_icon_v_start = (float)128/256;
-
-float help_icon_u_start = (float)224/256;
-float help_icon_v_start = (float)128/256;
-
-float colored_help_icon_u_start = (float)192/256;
-float colored_help_icon_v_start = (float)128/256;
-
-float console_icon_u_start = (float)32/256;
-float console_icon_v_start = (float)0/256;
-
-float colored_console_icon_u_start = (float)128/256;
-float colored_console_icon_v_start = (float)96/256;
-
-float buddy_icon_u_start = (float)64/256;
-float buddy_icon_v_start = (float)32/256;
-
-float colored_buddy_icon_u_start = (float)0/256;
-float colored_buddy_icon_v_start = (float)96/256;
-
-float notepad_icon_u_start = (float)96/256;
-float notepad_icon_v_start = (float)0/256;
-
-float colored_notepad_icon_u_start = (float)192/256;
-float colored_notepad_icon_v_start = (float)0/256;
-#else	/* NEW_TEXTURES */
-float walk_icon_u_start=(float)0/256;
-float walk_icon_v_start=1.0f-(float)0/256;
-
-float colored_walk_icon_u_start=(float)64/256;
-float colored_walk_icon_v_start=1.0f-(float)64/256;
-
-float eye_icon_u_start=(float)64/256;
-float eye_icon_v_start=1.0f-(float)0/256;
-
-float colored_eye_icon_u_start=(float)128/256;
-float colored_eye_icon_v_start=1.0f-(float)64/256;
-
-float use_with_item_icon_u_start=(float)224/256;
-float use_with_item_icon_v_start=1.0f-(float)160/256;
-
-float colored_use_with_item_icon_u_start=(float)192/256;
-float colored_use_with_item_icon_v_start=1.0f-(float)160/256;
-
-
-float emotes_icon_u_start=(float)160/256;
-float emotes_icon_v_start=1.0f-(float)160/256;
-
-float colored_emotes_icon_u_start=(float)128/256;
-float colored_emotes_icon_v_start=1.0f-(float)160/256;
-
-
-float trade_icon_u_start=(float)128/256;
-float trade_icon_v_start=1.0f-(float)0/256;
-
-float colored_trade_icon_u_start=(float)192/256;
-float colored_trade_icon_v_start=1.0f-(float)64/256;
-
-float sit_icon_u_start=(float)224/256;
-float sit_icon_v_start=1.0f-(float)0/256;
-
-float colored_sit_icon_u_start=(float)32/256;
-float colored_sit_icon_v_start=1.0f-(float)96/256;
-
-float stand_icon_u_start=(float)0/256;
-float stand_icon_v_start=1.0f-(float)32/256;
-
-float colored_stand_icon_u_start=(float)64/256;
-float colored_stand_icon_v_start=1.0f-(float)96/256;
-
-float spell_icon_u_start=(float)32/256;
-float spell_icon_v_start=1.0f-(float)32/256;
-
-float colored_spell_icon_u_start=(float)96/256;
-float colored_spell_icon_v_start=1.0f-(float)96/256;
-
-float inventory_icon_u_start=(float)96/256;
-float inventory_icon_v_start=1.0f-(float)32/256;
-
-float colored_inventory_icon_u_start=(float)160/256;
-float colored_inventory_icon_v_start=1.0f-(float)96/256;
-
-float manufacture_icon_u_start=(float)128/256;
-float manufacture_icon_v_start=1.0f-(float)32/256;
-
-float colored_manufacture_icon_u_start=(float)0/256;
-float colored_manufacture_icon_v_start=1.0f-(float)128/256;
-
-float stats_icon_u_start=(float)160/256;
-float stats_icon_v_start=1.0f-(float)32/256;
-
-float colored_stats_icon_u_start=(float)32/256;
-float colored_stats_icon_v_start=1.0f-(float)128/256;
-
-float options_icon_u_start=(float)192/256;
-float options_icon_v_start=1.0f-(float)32/256;
-
-float colored_options_icon_u_start=(float)64/256;
-float colored_options_icon_v_start=1.0f-(float)128/256;
-
-float use_icon_u_start=(float)224/256;
-float use_icon_v_start=1.0f-(float)32/256;
-
-float colored_use_icon_u_start=(float)96/256;
-float colored_use_icon_v_start=1.0f-(float)128/256;
-
-float attack_icon_u_start=(float)160/256;
-float attack_icon_v_start=1.0f-(float)0/256;
-
-float colored_attack_icon_u_start=(float)224/256;
-float colored_attack_icon_v_start=1.0f-(float)64/256;
-
-float knowledge_icon_u_start=(float)96/256;
-float knowledge_icon_v_start=1.0f-(float)64/256;
-
-float colored_knowledge_icon_u_start=(float)160/256;
-float colored_knowledge_icon_v_start=1.0f-(float)64/256;
-
-float encyclopedia_icon_u_start=(float)0/256;
-float encyclopedia_icon_v_start=1.0f-(float)64/256;
-
-float colored_encyclopedia_icon_u_start=(float)32/256;
-float colored_encyclopedia_icon_v_start=1.0f-(float)64/256;
-
-float questlog_icon_u_start=(float)96/256;
-float questlog_icon_v_start=1.0f-(float)64/256;
-
-float colored_questlog_icon_u_start=(float)160/256;
-float colored_questlog_icon_v_start=1.0f-(float)64/256;
-
-float map_icon_u_start=(float)128/256;
-float map_icon_v_start=1.0f-(float)128/256;
-
-float colored_map_icon_u_start=(float)160/256;
-float colored_map_icon_v_start=1.0f-(float)128/256;
-
-float help_icon_u_start=(float)224/256;
-float help_icon_v_start=1.0f-(float)128/256;
-
-float colored_help_icon_u_start=(float)192/256;
-float colored_help_icon_v_start=1.0f-(float)128/256;
-
-float console_icon_u_start=(float)32/256;
-float console_icon_v_start=1.0f-(float)0/256;
-
-float colored_console_icon_u_start=(float)128/256;
-float colored_console_icon_v_start=1.0f-(float)96/256;
-
-float buddy_icon_u_start=(float)64/256;
-float buddy_icon_v_start=1.0f-(float)32/256;
-
-float colored_buddy_icon_u_start=(float)0/256;
-float colored_buddy_icon_v_start=1.0f-(float)96/256;
-
-float notepad_icon_u_start=(float)96/256;
-float notepad_icon_v_start=1.0f-(float)0/256;
-
-float colored_notepad_icon_u_start=(float)192/256;
-float colored_notepad_icon_v_start=1.0f-(float)0/256;
-#endif	/* NEW_TEXTURES */
-
-/*
-float urlwin_icon_u_start=(float)96/256;
-float urlwin_icon_v_start=1.0f-(float)64/256;
-
-float colored_urlwin_icon_u_start=(float)160/256;
-float colored_urlwin_icon_v_start=1.0f-(float)64/256;
-*/
-
-// to help highlight the proper icon
-int	icon_cursor_x;
-
-void init_newchar_icons()
-{
-	/* wait until we have the root window to avoid hiding this one */
-	if (newchar_root_win < 0)
-		return;
-
-	//create the icon window
-	if(icons_win < 0)
-		{
-			icons_win= create_window("Icons", -1, 0, 0, window_height-32, window_width-hud_x, 32, ELW_TITLE_NONE|ELW_SHOW_LAST);
-			set_window_handler(icons_win, ELW_HANDLER_DISPLAY, &display_icons_handler);
-			set_window_handler(icons_win, ELW_HANDLER_CLICK, &click_icons_handler);
-			set_window_handler(icons_win, ELW_HANDLER_MOUSEOVER, &mouseover_icons_handler);
-		}
-	else
-		{
-			move_window(icons_win, -1, 0, 0, window_height-32);
-		}
-
-	if(icons_no) return;
-#ifndef NEW_NEW_CHAR_WINDOW
-	add_icon(stand_icon_u_start, stand_icon_v_start, colored_stand_icon_u_start, colored_stand_icon_v_start, tt_name, view_window, &namepass_win, DATA_WINDOW);
-	
-	add_icon(eye_icon_u_start, eye_icon_v_start, colored_eye_icon_u_start, colored_eye_icon_v_start, tt_customize, view_window, &color_race_win, DATA_WINDOW);
-#endif
-	add_icon(help_icon_u_start, help_icon_v_start, colored_help_icon_u_start, colored_help_icon_v_start, tt_help, view_window, &tab_help_win, DATA_WINDOW);
-	
-	add_icon(options_icon_u_start, options_icon_v_start, colored_options_icon_u_start, colored_options_icon_v_start, tt_options, view_window, &elconfig_win, DATA_WINDOW);
-}
-
-void init_peace_icons()
-{
-	//create the icon window
-	if(icons_win < 0)
-		{
-			icons_win= create_window("Icons", -1, 0, 0, window_height-32, window_width-hud_x, 32, ELW_TITLE_NONE|ELW_SHOW_LAST);
-			set_window_handler(icons_win, ELW_HANDLER_DISPLAY, &display_icons_handler);
-			set_window_handler(icons_win, ELW_HANDLER_CLICK, &click_icons_handler);
-			set_window_handler(icons_win, ELW_HANDLER_MOUSEOVER, &mouseover_icons_handler);
-		}
-	else
-		{
-			move_window(icons_win, -1, 0, 0, window_height-32);
-		}
-
-	if(icons_no) return;
-	
-	//add_icon(stand_icon_u_start, stand_icon_v_start, colored_stand_icon_u_start, colored_stand_icon_v_start, tt_stand, sit_button_pressed, &you_sit, DATA_NONE);
-
-	add_icon(walk_icon_u_start, walk_icon_v_start, colored_walk_icon_u_start, colored_walk_icon_v_start, tt_walk, switch_action_mode, (void *)ACTION_WALK, DATA_ACTIONMODE);
-	
-	if(you_sit)
-		add_icon(stand_icon_u_start, stand_icon_v_start, colored_stand_icon_u_start, colored_stand_icon_v_start, tt_stand, sit_button_pressed, NULL, DATA_NONE);
-	else
-		add_icon(sit_icon_u_start, sit_icon_v_start, colored_sit_icon_u_start, colored_sit_icon_v_start, tt_sit, sit_button_pressed, NULL, DATA_NONE);
-	
-	add_icon(eye_icon_u_start, eye_icon_v_start, colored_eye_icon_u_start, colored_eye_icon_v_start, tt_look, switch_action_mode, (void *)ACTION_LOOK, DATA_ACTIONMODE);
-
-	add_icon(use_icon_u_start, use_icon_v_start, colored_use_icon_u_start, colored_use_icon_v_start, tt_use, switch_action_mode, (void *)ACTION_USE, DATA_ACTIONMODE);
-	
-	add_icon(use_with_item_icon_u_start, use_with_item_icon_v_start, colored_use_with_item_icon_u_start, colored_use_with_item_icon_v_start, tt_use_witem, switch_action_mode, (void *)ACTION_USE_WITEM, DATA_ACTIONMODE);
-
-	add_icon(trade_icon_u_start, trade_icon_v_start, colored_trade_icon_u_start, colored_trade_icon_v_start, tt_trade, switch_action_mode, (void *)ACTION_TRADE, DATA_ACTIONMODE);
-
-	add_icon(attack_icon_u_start, attack_icon_v_start, colored_attack_icon_u_start, colored_attack_icon_v_start, tt_attack, switch_action_mode, (void *)ACTION_ATTACK, DATA_ACTIONMODE);
-
-	//done with the integer variables - now for the windows
-	
-	add_icon(inventory_icon_u_start, inventory_icon_v_start, colored_inventory_icon_u_start, colored_inventory_icon_v_start, tt_inventory, view_window, &items_win, DATA_WINDOW);
-	
-	add_icon(spell_icon_u_start, spell_icon_v_start, colored_spell_icon_u_start, colored_spell_icon_v_start, tt_spell, view_window, &sigil_win, DATA_WINDOW);
-	
-	add_icon(manufacture_icon_u_start, manufacture_icon_v_start, colored_manufacture_icon_u_start, colored_manufacture_icon_v_start, tt_manufacture, view_window, &manufacture_win, DATA_WINDOW);
-
-	add_icon(emotes_icon_u_start, emotes_icon_v_start, colored_emotes_icon_u_start, colored_emotes_icon_v_start, tt_emotewin, view_window, &emotes_win, DATA_WINDOW);
-
-	
-	/*
-	add_icon(stats_icon_u_start, stats_icon_v_start, colored_stats_icon_u_start, colored_stats_icon_v_start, tt_stats, view_window, &stats_win, DATA_WINDOW);
-
-	add_icon(knowledge_icon_u_start, knowledge_icon_v_start, colored_knowledge_icon_u_start, colored_knowledge_icon_v_start, tt_knowledge, view_window, &knowledge_win, DATA_WINDOW);
-	
-	add_icon(encyclopedia_icon_u_start, encyclopedia_icon_v_start, colored_encyclopedia_icon_u_start, colored_encyclopedia_icon_v_start, tt_encyclopedia, view_window, &encyclopedia_win, DATA_WINDOW);
-	
-	add_icon(urlwin_icon_u_start, urlwin_icon_v_start, colored_urlwin_icon_u_start, colored_urlwin_icon_v_start, tt_urlwin, view_window, &url_win, DATA_WINDOW);
-	*/
-	add_icon(questlog_icon_u_start, questlog_icon_v_start, colored_questlog_icon_u_start, colored_questlog_icon_v_start, tt_questlog, view_window, &questlog_win, DATA_WINDOW);
-
-	add_icon(map_icon_u_start, map_icon_v_start, colored_map_icon_u_start, colored_map_icon_v_start, tt_mapwin, view_map_win, &map_root_win, DATA_MODE);
-
-	add_icon(notepad_icon_u_start, notepad_icon_v_start, colored_notepad_icon_u_start, colored_notepad_icon_v_start, tt_info, view_window, &tab_info_win, DATA_WINDOW);
-
-	add_icon(buddy_icon_u_start, buddy_icon_v_start, colored_buddy_icon_u_start, colored_buddy_icon_v_start, tt_buddy, view_window, &buddy_win, DATA_WINDOW);
-
-	add_icon(stats_icon_u_start, stats_icon_v_start, colored_stats_icon_u_start, colored_stats_icon_v_start, tt_stats, view_window, &tab_stats_win, DATA_WINDOW);
-
-	add_icon(console_icon_u_start, console_icon_v_start, colored_console_icon_u_start, colored_console_icon_v_start, tt_console, view_console_win, &console_root_win, DATA_MODE);
-
-	add_icon(help_icon_u_start, help_icon_v_start, colored_help_icon_u_start, colored_help_icon_v_start, tt_help, view_window, &tab_help_win, DATA_WINDOW);
-
-	add_icon(options_icon_u_start, options_icon_v_start, colored_options_icon_u_start, colored_options_icon_v_start, tt_options, view_window, &elconfig_win, DATA_WINDOW);
-
-	resize_window(icons_win, 32*icons_no, 32);
-
-}
-
-void	add_icon(float u_start, float v_start, float colored_u_start, float colored_v_start, char * help_message, void * func, void * data, char data_type)
-{
-	int no=icons_no++;
-	icon_list[no]=(icon_struct*)calloc(1,sizeof(icon_struct));
-	if(no == 0)
-		icon_list[no]->state=PRESSED;
-	else
-		icon_list[no]->state=0;
-	icon_list[no]->u[0]=u_start;
-	icon_list[no]->u[1]=colored_u_start;
-	icon_list[no]->v[0]=v_start;
-	icon_list[no]->v[1]=colored_v_start;
-	icon_list[no]->func=func;
-	icon_list[no]->help_message=help_message;
-	icon_list[no]->free_data=0;
-	icon_list[no]->flashing=0;
-	switch(data_type)
-		{
-		case DATA_ACTIONMODE:
-			icon_list[no]->data=(int*)calloc(1,sizeof(int));
-			*(int *)icon_list[no]->data=(point)data;
-			icon_list[no]->free_data=1;
-			break;
-		case DATA_MODE:			
-		case DATA_WINDOW:
-			icon_list[no]->data=data;
-			break;
-		case DATA_NONE:
-			icon_list[no]->data=NULL;
-			break;
-		}
-	icon_list[no]->data_type=data_type;
-}
-
-void free_icons()
-{
-	int i;
-	for(i=0;i<icons_no;i++) {
-		if(icon_list[i]->free_data)
-			free(icon_list[i]->data);
-		free(icon_list[i]);
-	}
-	icons_no=0;
-}
-
-void flash_icon(const char* name, Uint32 seconds)
-{
-	int i;
-	for(i=0;i<icons_no;i++)
-		if (strcmp(name, icon_list[i]->help_message) == 0)
-		{
-			icon_list[i]->flashing = 4*seconds;
-			break;
-		}
-}
-
-int	mouseover_icons_handler(window_info *win, int mx, int my)
-{
-	icon_cursor_x= mx;	// just memorize for later
-
-	return 0;
-}
-
-int	display_icons_handler(window_info *win)
-{
-	int i, state=-1, *z;
-
-	//glEnable(GL_ALPHA_TEST);//enable alpha filtering, so we have some alpha key
-	//glAlphaFunc(GL_GREATER,0.03f);
-
-	for(i=0;i<icons_no;i++)
-		{
-			z = (int*)icon_list[i]->data;
-			switch(icon_list[i]->data_type) {
-			case DATA_WINDOW:
-				if ( *z >= 0 && (windows_list.window[*z].displayed || windows_list.window[*z].reinstate) )
-					icon_list[i]->state = 1;
-				else
-					icon_list[i]->state = 0;
-				break;
-			case DATA_MODE:
-				icon_list[i]->state=get_show_window (*z);
-				break;
-			case DATA_ACTIONMODE:
-				icon_list[i]->state=(action_mode==*z);
-				break;
-			default:
-				icon_list[i]->state=0;
-				break;
-			}
-		}
-	
-	if(mouse_in_window(win->window_id, mouse_x, mouse_y))
-		{
-			state=icon_cursor_x/32;//Icons must be 32 pixels wide...
-			if(state<icons_no)icon_list[state]->state|=0x01;//Set the state to be mouseover
-			else state=-1;
-		}
-	
-#ifdef	NEW_TEXTURES
-	bind_texture(icons_text);
-#else	/* NEW_TEXTURES */
-	get_and_set_texture_id(icons_text);
-#endif	/* NEW_TEXTURES */
-	glColor3f(1.0f,1.0f,1.0f);
-	glBegin(GL_QUADS);
-	
-	for(i=0;i<icons_no;i++)
-		{
-			size_t index = STATE(i);
-			if (icon_list[i]->flashing)
-			{
-				if (abs(SDL_GetTicks() - icon_list[i]->last_flash_change) > 250)
-				{
-					icon_list[i]->last_flash_change = SDL_GetTicks();
-					icon_list[i]->flashing--;
-				}
-				index = icon_list[i]->flashing & 1;
-			}
-			draw_2d_thing(
-				icon_list[i]->u[index],
-				icon_list[i]->v[index], 
-				icon_list[i]->u[index]+(float)31/256,
-#ifdef	NEW_TEXTURES
-				icon_list[i]->v[index] + (float)31/256,
-#else	/* NEW_TEXTURES */
-				icon_list[i]->v[index]-(float)31/256,
-#endif	/* NEW_TEXTURES */
-				i*32,0,i*32+31,32
-				);
-			if(!(icon_list[i]->state>>31))icon_list[i]->state=0;//Else we pressed the button and it should still be pressed
-		}
-	glEnd();
-	//glDisable(GL_ALPHA_TEST);
-	if(state>=0 && show_help_text) show_help(icon_list[state]->help_message, 32*(state+1)+2, 10);//Show the help message
-
-	return 1;
-}
-
-void sit_button_pressed(void * none, int id)
-{
-	if(you_sit)
-		{
-			Uint8 str[4];
-			//Send message to server...	
-			str[0]=SIT_DOWN;
-			str[1]=0;
-			my_tcp_send(my_socket,str,2);
-		}
-	else
-		{
-			Uint8 str[4];
-			//Send message to server...
-			str[0]=SIT_DOWN;
-			str[1]=1;
-			my_tcp_send(my_socket,str,2);
-		}
-}
-
-void you_sit_down()
-{
-	you_sit=1;
-	if(!icon_list[1])return;
-	icon_list[1]->u[0]=stand_icon_u_start;//Change the icon to stand
-	icon_list[1]->u[1]=colored_stand_icon_u_start;
-	icon_list[1]->v[0]=stand_icon_v_start;
-	icon_list[1]->v[1]=colored_stand_icon_v_start;
-	icon_list[1]->help_message=tt_stand;
-}
-
-void you_stand_up()
-{
-	you_sit=0;
-	if(!icon_list[1])return;
-	icon_list[1]->u[0]=sit_icon_u_start;
-	icon_list[1]->u[1]=colored_sit_icon_u_start;
-	icon_list[1]->v[0]=sit_icon_v_start;
-	icon_list[1]->v[1]=colored_sit_icon_v_start;
-	icon_list[1]->help_message=tt_sit;
-}
-
 void switch_action_mode(int * mode, int id)
 {
 	item_action_mode=qb_action_mode=action_mode=*mode;
@@ -927,8 +357,57 @@ void view_map_win (int * win, int id)
 	}
 }
 
+typedef struct
+{
+	char name[20];
+	int *id;
+} windowid_by_name;
+
+int* get_winid(const char *name)
+{
+	static windowid_by_name win_ids[] = {
+		{ "invent", &items_win },
+		{ "spell", &sigil_win },
+		{ "manu", &manufacture_win },
+		{ "emotewin", &emotes_win },
+		{ "quest", &questlog_win },
+		{ "map", &map_root_win },
+		{ "info", &tab_info_win },
+		{ "buddy", &buddy_win },
+		{ "stats", &tab_stats_win },
+		{ "console", &console_root_win },
+		{ "help", &tab_help_win },
+		{ "opts", &elconfig_win },
+		{ "range", &range_win },
+		{ "minimap", &minimap_win },
+		{ "name_pass", &namepass_win },
+		{ "customize", &color_race_win } };
+	size_t i;
+	if (name == NULL)
+		return NULL;
+	for (i=0; i<sizeof(win_ids)/sizeof(windowid_by_name); i++)
+		if (strcmp(win_ids[i].name, name) == 0)
+			return win_ids[i].id;
+	return NULL;
+}
+
 void view_window(int * window, int id)
 {
+	if (window == NULL)
+		return;
+
+	if (window == &map_root_win)
+	{
+		view_map_win(window, id);
+		return;
+	}
+
+	if (window == &console_root_win)
+	{
+		view_console_win(window, id);
+		return;
+	}
+	
 	if(window==&sigil_win||window==&manufacture_win)
 		{
 			if(get_show_window(trade_win))
@@ -937,6 +416,7 @@ void view_window(int * window, int id)
 					return;
 				}
 		}
+
 	if(*window < 0)
 		{
 			//OK, the window has not been created yet - use the standard functions
@@ -985,48 +465,32 @@ void view_tab (int *window, int *col_id, int tab)
 	}
 }
 
-int	click_icons_handler(window_info *win, int mx, int my, Uint32 flags)
+int enlarge_text(void)
 {
-	int id=mx/32;//Icons are always 32 bit wide
-	
-	// only handle mouse button clicks, not scroll wheels moves
-	if ( (flags & ELW_MOUSE_BUTTON) == 0) return 0;
-
-	if(combat_mode)return 0;
-
-	if(id<icons_no)
-		{
-			switch(icon_list[id]->data_type)
-				{
-				case DATA_MODE:
-				case DATA_ACTIONMODE:
-				case DATA_WINDOW:
-					{
-						int * data=(int *)icon_list[id]->data;
-						icon_list[id]->func(data, id);
-						break;
-					}
-				default:
-					{
-						icon_list[id]->func(0, id);
-						break;
-					}
-				}
-			do_icon_click_sound();
-			// cancel any flashing icon now user has responded
-			icon_list[id]->flashing = 0;
-		}
-	return 1;
+	if (always_enlarge_text)
+		return 1;
+	return ((SDL_GetModState() & (KMOD_CTRL|KMOD_ALT)));
 }
 
 void show_help(const char *help_message, int x, int y)
 {
-	show_help_coloured(help_message, x, y, 1.0f, 1.0f, 1.0f);
+	show_sized_help_coloured(help_message, x, y, 1.0f, 1.0f, 1.0f, 0);
+}
+
+void show_sized_help(const char *help_message, int x, int y, int big)
+{
+	show_sized_help_coloured(help_message, x, y, 1.0f, 1.0f, 1.0f, big);
 }
 
 void show_help_coloured(const char *help_message, int x, int y, float r, float g, float b)
 {
-	int len=strlen(help_message)*8+1;
+	show_sized_help_coloured(help_message, x, y, r, g, b, 0);
+}
+
+void show_sized_help_coloured(const char *help_message, int x, int y, float r, float g, float b, int big)
+{
+	float y_font_len = (big) ?DEFAULT_FONT_Y_LEN: SMALL_FONT_Y_LEN;
+	int len=strlen(help_message)*((big) ?DEFAULT_FONT_X_LEN :SMALL_FONT_X_LEN)+1;
 	int width=window_width-80;
 
 	if(x+len>width) x-=(x+len)-width;
@@ -1036,17 +500,20 @@ void show_help_coloured(const char *help_message, int x, int y, float r, float g
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 	glBegin(GL_QUADS);
-	glVertex3i(x-1,y+SMALL_FONT_Y_LEN,0);
+	glVertex3i(x-1,y+y_font_len,0);
 	glVertex3i(x-1,y,0);
 	glVertex3i(x+len,y,0);
-	glVertex3i(x+len,y+SMALL_FONT_Y_LEN,0);
+	glVertex3i(x+len,y+y_font_len,0);
 	glEnd();
 
 	glDisable(GL_BLEND);
 	glEnable(GL_TEXTURE_2D);
 
 	glColor3f(r,g,b);
-	draw_string_small(x, y, (unsigned char*)help_message, 1);
+	if (big)
+		draw_string(x, y, (unsigned char*)help_message, 1);
+	else
+		draw_string_small(x, y, (unsigned char*)help_message, 1);
 #ifdef OPENGL_TRACE
 CHECK_GL_ERRORS();
 #endif //OPENGL_TRACE
@@ -1628,8 +1095,8 @@ static int context_hud_handler(window_info *win, int widget_id, int mx, int my, 
 		case CMH_MINIMAP: view_window(&minimap_win, 0); break;
 		case CMH_RANGSTATS: view_window(&range_win, 0); break;
 #ifdef NEW_SOUND
-		case CMH_SOUND: toggle_sounds(&sound_on); set_var_unsaved("enable_sound", OPT_BOOL); break;
-		case CMH_MUSIC: toggle_music(&music_on); set_var_unsaved("enable_music", OPT_BOOL); break;
+		case CMH_SOUND: toggle_sounds(&sound_on); set_var_unsaved("enable_sound", INI_FILE_VAR); break;
+		case CMH_MUSIC: toggle_music(&music_on); set_var_unsaved("enable_music", INI_FILE_VAR); break;
 #endif // NEW_SOUND
 		case CMH_LOCATION:
 			copy_next_LOCATE_ME = 1;
@@ -1663,7 +1130,7 @@ static void context_hud_pre_show_handler(window_info *win, int widget_id, int mx
 
 void init_misc_display(hud_interface type)
 {
-	int y_len = 128 + DEFAULT_FONT_Y_LEN + knowledge_bar_height + (NUM_WATCH_STAT-1) * stats_bar_height;
+	int y_len = 128 + DEFAULT_FONT_Y_LEN + knowledge_bar_height + get_height_of_timer() + (NUM_WATCH_STAT-1) * stats_bar_height;
 	int i;
 	//create the misc window
 	if(misc_win < 0)
@@ -1676,10 +1143,12 @@ void init_misc_display(hud_interface type)
 			cm_bool_line(cm_hud_id, CMH_STATS, &show_stats_in_hud, "show_stats_in_hud");
 			cm_bool_line(cm_hud_id, CMH_STATBARS, &show_statbars_in_hud, "show_statbars_in_hud");
 			cm_bool_line(cm_hud_id, CMH_KNOWBAR, &view_knowledge_bar, "view_knowledge_bar");
+			cm_bool_line(cm_hud_id, CMH_TIMER, &view_hud_timer, "view_hud_timer");
 			cm_bool_line(cm_hud_id, CMH_DIGCLOCK, &view_digital_clock, "view_digital_clock");
 			cm_bool_line(cm_hud_id, CMH_ANACLOCK, &view_analog_clock, "view_analog_clock");
 			cm_bool_line(cm_hud_id, CMH_SECONDS, &show_game_seconds, "show_game_seconds");
 			cm_bool_line(cm_hud_id, CMH_FPS, &show_fps, "show_fps");
+			cm_bool_line(cm_hud_id, CMH_INDICATORS, &show_hud_indicators, "show_indicators");
 			cm_bool_line(cm_hud_id, CMH_MINIMAP, &cm_minimap_shown, NULL);
 			cm_bool_line(cm_hud_id, CMH_RANGSTATS, &cm_rangstats_shown, NULL);
 			cm_bool_line(cm_hud_id, CMH_QUICKBM, &cm_quickbar_enabled, NULL);
@@ -1696,78 +1165,12 @@ void init_misc_display(hud_interface type)
 	cm_grey_line(cm_hud_id, CMH_STATS, (type == HUD_INTERFACE_NEW_CHAR));
 	cm_grey_line(cm_hud_id, CMH_STATBARS, (type == HUD_INTERFACE_NEW_CHAR));
 	cm_grey_line(cm_hud_id, CMH_FPS, (type == HUD_INTERFACE_NEW_CHAR));
+	cm_grey_line(cm_hud_id, CMH_INDICATORS, (type == HUD_INTERFACE_NEW_CHAR));
 	cm_grey_line(cm_hud_id, CMH_MINIMAP, (type == HUD_INTERFACE_NEW_CHAR));
 	cm_grey_line(cm_hud_id, CMH_RANGSTATS, (type == HUD_INTERFACE_NEW_CHAR));
 	cm_grey_line(cm_hud_id, CMH_QUICKBM, (type == HUD_INTERFACE_NEW_CHAR));
 	cm_grey_line(cm_hud_id, CMH_LOCATION, (type == HUD_INTERFACE_NEW_CHAR));
-		
-	/* store references to the skills info in an easy to use array */
-	statsinfo[0].exp = &your_info.attack_exp;
-	statsinfo[0].next_lev = &your_info.attack_exp_next_lev;
-	statsinfo[0].skillattr = &your_info.attack_skill;
-	statsinfo[0].skillnames = &attributes.attack_skill;
 
-	statsinfo[1].exp = &your_info.defense_exp;
-	statsinfo[1].next_lev = &your_info.defense_exp_next_lev;
-	statsinfo[1].skillattr = &your_info.defense_skill;
-	statsinfo[1].skillnames = &attributes.defense_skill;
-
-	statsinfo[2].exp = &your_info.harvesting_exp;
-	statsinfo[2].next_lev = &your_info.harvesting_exp_next_lev;
-	statsinfo[2].skillattr = &your_info.harvesting_skill;
-	statsinfo[2].skillnames = &attributes.harvesting_skill;
-
-	statsinfo[3].exp = &your_info.alchemy_exp;
-	statsinfo[3].next_lev = &your_info.alchemy_exp_next_lev;
-	statsinfo[3].skillattr = &your_info.alchemy_skill;
-	statsinfo[3].skillnames = &attributes.alchemy_skill;
-
-	statsinfo[4].exp = &your_info.magic_exp;
-	statsinfo[4].next_lev = &your_info.magic_exp_next_lev;
-	statsinfo[4].skillattr = &your_info.magic_skill;
-	statsinfo[4].skillnames = &attributes.magic_skill;
-
-	statsinfo[5].exp = &your_info.potion_exp;
-	statsinfo[5].next_lev = &your_info.potion_exp_next_lev;
-	statsinfo[5].skillattr = &your_info.potion_skill;
-	statsinfo[5].skillnames = &attributes.potion_skill;
-
-	statsinfo[6].exp = &your_info.summoning_exp;
-	statsinfo[6].next_lev = &your_info.summoning_exp_next_lev;
-	statsinfo[6].skillattr = &your_info.summoning_skill;
-	statsinfo[6].skillnames = &attributes.summoning_skill;
-
-	statsinfo[7].exp = &your_info.manufacturing_exp;
-	statsinfo[7].next_lev = &your_info.manufacturing_exp_next_lev;
-	statsinfo[7].skillattr = &your_info.manufacturing_skill;
-	statsinfo[7].skillnames = &attributes.manufacturing_skill;
-
-	statsinfo[8].exp = &your_info.crafting_exp;
-	statsinfo[8].next_lev = &your_info.crafting_exp_next_lev;
-	statsinfo[8].skillattr = &your_info.crafting_skill;
-	statsinfo[8].skillnames = &attributes.crafting_skill;
-
-	statsinfo[9].exp = &your_info.engineering_exp;
-	statsinfo[9].next_lev = &your_info.engineering_exp_next_lev;
-	statsinfo[9].skillattr = &your_info.engineering_skill;
-	statsinfo[9].skillnames = &attributes.engineering_skill;
-
-	statsinfo[10].exp = &your_info.tailoring_exp;
-	statsinfo[10].next_lev = &your_info.tailoring_exp_next_lev;
-	statsinfo[10].skillattr = &your_info.tailoring_skill;
-	statsinfo[10].skillnames = &attributes.tailoring_skill;
-
-	statsinfo[11].exp = &your_info.ranging_exp;
-	statsinfo[11].next_lev = &your_info.ranging_exp_next_lev;
-	statsinfo[11].skillattr = &your_info.ranging_skill;
-	statsinfo[11].skillnames = &attributes.ranging_skill;
-
-	/* always make last as special case for skills modifiers - and best displayed last anyway */
-	statsinfo[12].exp = &your_info.overall_exp;
-	statsinfo[12].next_lev = &your_info.overall_exp_next_lev;
-	statsinfo[12].skillattr = &your_info.overall_skill;
-	statsinfo[12].skillnames = &attributes.overall_skill;
-	
 	for (i=0; i<MAX_WATCH_STATS; i++)
 	{
 		if (watch_this_stats[i] > 0)
@@ -1830,7 +1233,6 @@ static int calc_statbar_start_y(int base_y_start, int win_y_len)
 int display_misc_handler(window_info *win)
 {
 	int base_y_start = win->len_y - (view_analog_clock?128:64) - (view_digital_clock?DEFAULT_FONT_Y_LEN:0);
-	char str[16];	// one extra incase the length of the day ever changes
 #ifdef OPENGL_TRACE
 CHECK_GL_ERRORS();
 #endif //OPENGL_TRACE
@@ -1884,6 +1286,7 @@ CHECK_GL_ERRORS();
 	//Digital Clock
 	if(view_digital_clock > 0){
 		int x;
+		char str[10];
 
 		//glColor3f(0.77f, 0.57f, 0.39f); // useless
 		if (show_game_seconds)
@@ -1902,6 +1305,7 @@ CHECK_GL_ERRORS();
 	/* if mouse over the either of the clocks - display the time & date */
 	if (mouse_over_clock)
 	{
+		char str[20];
 		const char *the_date = get_date(NULL);
 		int centre_y =  (view_analog_clock) ?win->len_y-96 : base_y_start + DEFAULT_FONT_Y_LEN/2;
 
@@ -1918,6 +1322,7 @@ CHECK_GL_ERRORS();
 	/* if mouse over the compass - display the coords */
 	if (mouse_over_compass)
 	{
+		char str[12];
 		actor *me = get_our_actor ();
 		if (me != NULL)
 		{
@@ -1956,6 +1361,9 @@ CHECK_GL_ERRORS();
 
 		base_y_start -= knowledge_bar_height;
 	}
+
+	/* if the timer is visible, draw it */
+	base_y_start -= display_timer(win, base_y_start);
 
 	// Trade the number of quickbar slots if too much is displayed (not considering stats yet)
 	while (((win->len_y - base_y_start) - get_max_quick_y()) > 0)
@@ -2098,9 +1506,12 @@ int	click_misc_handler(window_info *win, int mx, int my, Uint32 flags)
 		}
 	}
 
+	if (mouse_is_over_timer(win, mx, my))
+		return mouse_click_timer(flags);
+
 	// only handle mouse button clicks, not scroll wheels moves
 	if ( (flags & ELW_MOUSE_BUTTON) == 0) return 0;
-	
+
 	// reserve CTRL clicks for scrolling
 	if (flags & ELW_CTRL) return 0;
 
@@ -2180,6 +1591,10 @@ int mouseover_misc_handler(window_info *win, int mx, int my)
 	if (mouse_is_over_knowedge_bar(win, mx, my))
 		mouse_over_knowledge_bar = 1;
 
+	/* check if over the timer */
+	if (mouse_is_over_timer(win, mx, my))
+		set_mouse_over_timer();
+
 	/* if mouse over the compass - display the coords */
 	if(my>win->len_y-64 && my<win->len_y)
 		mouse_over_compass = 1;
@@ -2189,6 +1604,7 @@ int mouseover_misc_handler(window_info *win, int mx, int my)
 
 /* #define as these numbers are used many times */
 #define DEF_QUICKBAR_X_LEN 30
+#define DEF_QUICKBAR_Y_LEN 30
 #define DEF_QUICKBAR_X (DEF_QUICKBAR_X_LEN+4)
 #define DEF_QUICKBAR_Y 64
 
@@ -2204,7 +1620,7 @@ static int last_num_quickbar_slots = 6;
 // return the window y len based on the number of slots
 int get_quickbar_y_len(void)
 {
-	return num_quickbar_slots * 30 + 1;
+	return num_quickbar_slots * DEF_QUICKBAR_Y_LEN + 1;
 }
 
 // check if key is one of the item keys and use it if so.
@@ -2289,6 +1705,7 @@ int	display_quickbar_handler(window_info *win)
 	char str[80];
 	int y, i;
 	Uint32 _cur_time = SDL_GetTicks(); /* grab a snapshot of current time */
+	int ypos = -1, xpos = -1;
 
 	// check if the number of slots has changes and adjust if needed
 	if (last_num_quickbar_slots == -1)
@@ -2305,7 +1722,7 @@ int	display_quickbar_handler(window_info *win)
 	glEnable(GL_TEXTURE_2D);
 	glColor3f(1.0f,1.0f,1.0f);
 	//ok, now let's draw the objects...
-	for(i=0;i<num_quickbar_slots;i++)
+	for(i=num_quickbar_slots-1;i>=0;i--)
 	{
 		if(item_list[i].quantity > 0)
 		{
@@ -2330,7 +1747,7 @@ int	display_quickbar_handler(window_info *win)
 					
 			x_start= 2;
 			x_end= x_start+27;
-			y_start= 30*(cur_pos%num_quickbar_slots)+2;
+			y_start= DEF_QUICKBAR_Y_LEN*(cur_pos%num_quickbar_slots)+2;
 			y_end= y_start+27;
 
 			if(quickbar_dir != VERTICAL)
@@ -2406,9 +1823,25 @@ int	display_quickbar_handler(window_info *win)
 			}
 			
 			safe_snprintf(str,sizeof(str),"%i",item_list[i].quantity);
-			draw_string_small_shadowed(x_start,y_end-SMALL_FONT_Y_LEN,(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
+			if (quickbar_dir==VERTICAL)
+			{
+				int lenstr = strlen(str);
+				lenstr *= ((mouseover_quickbar_item_pos == i) && enlarge_text()) ?DEFAULT_FONT_X_LEN :SMALL_FONT_X_LEN;
+				xpos = ((x_start + lenstr + win->cur_x) > window_width) ?window_width - win->cur_x - lenstr :x_start;
+				ypos = y_end-15;
+			}
+			else
+			{
+				xpos = x_start;
+				ypos = (i&1)?(y_end-15):(y_end-25);
+			}
+			if ((mouseover_quickbar_item_pos == i) && enlarge_text())
+				draw_string_shadowed(xpos,ypos,(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
+			else
+				draw_string_small_shadowed(xpos,ypos,(unsigned char*)str,1,1.0f,1.0f,1.0f,0.0f,0.0f,0.0f);
 		}
 	}
+	mouseover_quickbar_item_pos = -1;
 	
 	// Render the grid *after* the images. It seems impossible to code
 	// it such that images are rendered exactly within the boxes on all 
@@ -2421,16 +1854,16 @@ int	display_quickbar_handler(window_info *win)
 		{
 			for(y=1;y<num_quickbar_slots;y++)
 				{
-					glVertex3i(0, y*30+1, 0);
-					glVertex3i(quickbar_x_len, y*30+1, 0);
+					glVertex3i(0, y*DEF_QUICKBAR_Y_LEN+1, 0);
+					glVertex3i(quickbar_x_len, y*DEF_QUICKBAR_Y_LEN+1, 0);
 				}
 		}
 	else
 		{
 			for(y=1;y<num_quickbar_slots;y++)
 				{
-					glVertex3i(y*30+1, 0, 0);
-					glVertex3i(y*30+1, quickbar_x_len, 0);
+					glVertex3i(y*DEF_QUICKBAR_Y_LEN+1, 0, 0);
+					glVertex3i(y*DEF_QUICKBAR_Y_LEN+1, quickbar_x_len, 0);
 				}
 		}
 	glEnd();
@@ -2444,6 +1877,42 @@ CHECK_GL_ERRORS();
 
 int last_type=0;
 
+static void quickbar_item_description_help(window_info *win, int pos, int slot)
+{
+	Uint16 item_id = item_list[pos].id;
+	int image_id = item_list[pos].image_id;
+	if (show_item_desc_text && item_info_available() && (get_item_count(item_id, image_id) == 1))
+	{
+		const char *str = get_item_description(item_id, image_id);
+		if (str != NULL)
+		{
+			int xpos = 0, ypos = 0;
+			int len_str = (strlen(str) + 1) * SMALL_FONT_X_LEN;
+			/* vertical place right (or left) and aligned with slot */
+			if (quickbar_dir==VERTICAL)
+			{
+				xpos = win->len_x + 5;
+				if ((xpos + len_str + win->cur_x) > window_width)
+					xpos = -len_str;
+				ypos = slot * DEF_QUICKBAR_Y_LEN + (DEF_QUICKBAR_Y_LEN - SMALL_FONT_Y_LEN) / 2;
+			}
+			/* horizontal place right at bottom (or top) of window */
+			else
+			{
+				xpos = 0;
+				ypos = win->len_y + 5;
+				if ((xpos + len_str + win->cur_x) > window_width)
+					xpos = window_width - win->cur_x - len_str;
+				if ((xpos + win->cur_x) < 0)
+					xpos = -win->cur_x + 5;
+				if ((ypos + SMALL_FONT_Y_LEN + win->cur_y) > window_height)
+					ypos = -(5 + SMALL_FONT_Y_LEN + (quickbar_draggable * ELW_TITLE_HEIGHT));
+			}
+			show_help(str, xpos, ypos);
+		}
+	}
+}
+
 int mouseover_quickbar_handler(window_info *win, int mx, int my) {
 	int y,i=0;
 	int x_screen,y_screen;
@@ -2452,14 +1921,14 @@ int mouseover_quickbar_handler(window_info *win, int mx, int my) {
 			if(quickbar_dir==VERTICAL)
 				{
 					x_screen=0;
-					y_screen=y*30;
+					y_screen=y*DEF_QUICKBAR_Y_LEN;
 				}
 			else
 				{
-					x_screen=y*30;
+					x_screen=y*DEF_QUICKBAR_Y_LEN;
 					y_screen=0;
 				}
-			if(mx>x_screen && mx<x_screen+30 && my>y_screen && my<y_screen+30)
+			if(mx>x_screen && mx<x_screen+DEF_QUICKBAR_Y_LEN && my>y_screen && my<y_screen+DEF_QUICKBAR_Y_LEN)
 				{
 					for(i=0;i<ITEM_NUM_ITEMS;i++){
 						if(item_list[i].quantity && item_list[i].pos==y)
@@ -2473,6 +1942,8 @@ int mouseover_quickbar_handler(window_info *win, int mx, int my) {
 								} else {
 									elwin_mouse=CURSOR_PICK;
 								}
+								quickbar_item_description_help(win, i, y);
+								mouseover_quickbar_item_pos = y;
 								return 1;
 							}
 					}
@@ -2491,8 +1962,8 @@ int	click_quickbar_handler(window_info *win, int mx, int my, Uint32 flags)
 	int ctrl_on = flags & ELW_CTRL;
 	int shift_on = flags & ELW_SHIFT;
 
-	// only handle mouse button clicks, not scroll wheels moves
-	if ( (flags & ELW_MOUSE_BUTTON) == 0) return 0;
+	// only handle mouse button clicks, not scroll wheels moves or clicks
+	if (( (flags & ELW_MOUSE_BUTTON) == 0) || ( (flags & ELW_MID_MOUSE) != 0)) return 0;
 
 	if(right_click) {
 		switch(qb_action_mode) {
@@ -2529,14 +2000,14 @@ int	click_quickbar_handler(window_info *win, int mx, int my, Uint32 flags)
 			if(quickbar_dir==VERTICAL)
 				{
 					x_screen=0;
-					y_screen=y*30;
+					y_screen=y*DEF_QUICKBAR_Y_LEN;
 				}
 			else
 				{
-					x_screen=y*30;
+					x_screen=y*DEF_QUICKBAR_Y_LEN;
 					y_screen=0;
 				}
-			if(mx>x_screen && mx<x_screen+30 && my>y_screen && my<y_screen+30)
+			if(mx>x_screen && mx<x_screen+DEF_QUICKBAR_Y_LEN && my>y_screen && my<y_screen+DEF_QUICKBAR_Y_LEN)
 				{
 					//see if there is an empty space to drop this item over.
 					if(item_dragged!=-1)//we have to drop this item
@@ -2765,7 +2236,7 @@ void draw_exp_display()
 		{
 			int name_x;
 			int name_y = exp_bar_start_y+10;
-			int icon_x = 32 * icons_no;
+			int icon_x = get_icons_win_active_len();
 			int cur_exp = *statsinfo[watch_this_stats[i]-1].exp;
 			int nl_exp = *statsinfo[watch_this_stats[i]-1].next_lev;
 			int baselev = statsinfo[watch_this_stats[i]-1].skillattr->base;

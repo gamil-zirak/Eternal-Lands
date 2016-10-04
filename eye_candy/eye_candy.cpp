@@ -88,9 +88,10 @@ namespace ec
 		}
 
 	}
-#endif	/* NEW_TEXTURES */
 
+#else
 	const float MIN_SAFE_ALPHA = 0.02942f;
+#endif	/* NEW_TEXTURES */
 
 	// G L O B A L S //////////////////////////////////////////////////////////////
 
@@ -1299,14 +1300,14 @@ namespace ec
 	coord_t PolarCoordElement::get_radius(const angle_t angle) const
 	{
 		const angle_t temp_cos = cos((angle + offset) * frequency);
-		coord_t ret = math_cache.powf_0_1_rough_close(fabs(temp_cos), power)
+		coord_t ret = std::pow(fabsf(temp_cos), power)
 			* scalar + scalar;
 		ret = copysign(ret, temp_cos);
 		return ret;
 	}
 
 	Particle::Particle(Effect* _effect, ParticleMover* _mover, const Vec3 _pos,
-		const Vec3 _velocity)
+		const Vec3 _velocity, const coord_t _size)
 	{
 		effect = _effect;
 		base = effect->base;
@@ -1320,6 +1321,7 @@ namespace ec
 		energy = mover->calculate_energy(*this);
 		born = get_time();
 		mover->attachParticle(this);
+		size = _size;
 	}
 
 	Particle::~Particle()
@@ -1339,6 +1341,12 @@ namespace ec
 		coord_t tempsize = base->billboard_scalar * size;
 		tempsize *= flare();
 
+		assert(std::isfinite(burn));
+		assert(std::isfinite(tempalpha));
+		assert(std::isfinite(base->billboard_scalar));
+		assert(std::isfinite(size));
+		assert(std::isfinite(tempsize));
+
 		Uint32 texture = get_texture(); // Always hires, since we're not checking distance.
 
 		effect->draw_particle(tempsize, texture, color[0], color[1],
@@ -1346,7 +1354,7 @@ namespace ec
 
 		if (effect->motion_blur_points > 0)
 		{
-			const alpha_t faderate = math_cache.powf_0_1_rough_close(
+			const alpha_t faderate = std::pow(
 				effect->motion_blur_fade_rate, (float)usec / 1000000);
 
 			for (int i = 0; i < effect->motion_blur_points; i++)
@@ -1377,7 +1385,7 @@ namespace ec
 		{
 			case EyeCandy::POINT_SPRITES:
 			{
-				coord_t tempsize = base->temp_sprite_scalar * size * invsqrt(square(pos.x - base->camera.x) + square(pos.y - base->camera.y) + square(pos.z - base->camera.z));
+				coord_t tempsize = base->temp_sprite_scalar * size / std::sqrt(square(pos.x - base->camera.x) + square(pos.y - base->camera.y) + square(pos.z - base->camera.z));
 				tempsize *= flare();
 
 				if (tempsize > base->max_allowable_point_size)
@@ -1421,7 +1429,7 @@ namespace ec
 					if (effect->motion_blur_points > 0)
 					{
 						const alpha_t faderate =
-							math_cache.powf_0_1_rough_close(
+							std::pow(
 								effect->motion_blur_fade_rate, (float)usec
 									/ 1000000);
 
@@ -1474,7 +1482,7 @@ namespace ec
 						color[0], color[1], color[2], tempalpha, pos);
 				if (effect->motion_blur_points > 0)
 				{
-					const alpha_t faderate = math_cache.powf_0_1_rough_close(
+					const alpha_t faderate = std::pow(
 						effect->motion_blur_fade_rate, (float)usec / 1000000);
 
 					if (base->draw_method != EyeCandy::ACCURATE_BILLBOARDS)
@@ -1516,31 +1524,34 @@ namespace ec
 
 	coord_t Particle::flare() const
 	{
+		float exp_base, tmp;
+
 		assert(flare_frequency);
+
 		if (flare_max == 1.0)
+		{
 			return 1.0;
+		}
+
 #ifdef DEBUG_NANS
 		//  std::cout << "Beginning test." << std::endl;
 		if (!pos.is_valid())
 		std::cout << "ERROR: Invalid particle " << this << ": pos=" << pos << "; velocity=" << velocity << "; effect=" << effect << std::endl;
 #endif
+		assert(pos.is_valid());
+
 		const short offset = (short)long(&alpha); //Unique to the particle.
-#ifdef X86_64
-		float exp_base;
-		if (!pos.is_valid())
+
+		tmp = offset;
+
+		if (pos.is_valid())
 		{
-			exp_base = fabs(sin((offset) / flare_frequency));
+			tmp += pos.x + pos.y + pos.z;
 		}
-		else
-		{
-			exp_base = fabs(sin((pos.x + pos.y + pos.z + offset) / flare_frequency));
-		}
-#else
-		const float exp_base = fabs(sin((pos.x + pos.y + pos.z + offset)
-			/ flare_frequency));
-#endif
-		const coord_t exp =
-			math_cache.powf_0_1_rough_close(exp_base, flare_exp);
+
+		exp_base = fabs(sin(tmp / flare_frequency));
+
+		const coord_t exp = std::pow(exp_base, flare_exp);
 		const coord_t flare_val = 1.0 / (exp + 0.00001);
 		if (flare_val > flare_max)
 			return flare_max;
@@ -1564,7 +1575,7 @@ namespace ec
 #else	// Fast but obfuscated
 		const coord_t magnitude_squared = src.magnitude_squared();
 		Vec3 ret = nonpreserving_vec_shift(src, dest, percent);
-		ret *= invsqrt(ret.magnitude_squared() / magnitude_squared);
+		ret /= std::sqrt(ret.magnitude_squared() / magnitude_squared);
 #endif
 		return ret;
 	}
@@ -1607,7 +1618,7 @@ namespace ec
 #if 0	// Slow but clear version.  Consider this a comment.
 		p.velocity.normalize(gradient_velocity.magnitude() + 0.000001);
 #else	// Fast but obfuscated
-		p.velocity *= invsqrt(p.velocity.magnitude_squared() / (gradient_velocity.magnitude_squared() + 0.000001));
+		p.velocity /= std::sqrt(p.velocity.magnitude_squared() / (gradient_velocity.magnitude_squared() + 0.000001));
 #endif
 		p.pos += p.velocity * scalar;
 	}
@@ -1677,7 +1688,7 @@ namespace ec
 	Vec3 BoundingMover::get_force_gradient(Particle& p) const
 	{
 		Vec3 shifted_pos = p.pos - center_pos;
-		const coord_t radius= fastsqrt(square(shifted_pos.x) + square(shifted_pos.z));
+		const coord_t radius= std::sqrt(square(shifted_pos.x) + square(shifted_pos.z));
 		const angle_t angle = atan2(shifted_pos.x, shifted_pos.z);
 		const coord_t max_radius = bounding_range->get_radius(angle);
 		if (radius > max_radius)
@@ -1748,8 +1759,8 @@ namespace ec
 
 		// Simulated point gravity sources tend to promote extreme forces that, even if you fix the energy balance, will throw off angles.  Cancel them out.
 		energy_t scalar = G * mass / square(dist) + 0.00001;
-		if (scalar > max_gravity)
-			scalar = max_gravity;
+
+		scalar = std::min(scalar, max_gravity);
 		gravity_vec.normalize(scalar);
 		p.pos += p.velocity * ((coord_t)usec / 1000000.0);
 		p.velocity += gravity_vec * ((coord_t)usec / 1000000.0);
@@ -1763,17 +1774,17 @@ namespace ec
 		if (new_velocity_energy >= 0)
 		{
 #if 0	// Slow but clear.  Consider this a comment.
-			const coord_t new_velocity = fastsqrt(2.0 * new_velocity_energy);
+			const coord_t new_velocity = std::sqrt(2.0 * new_velocity_energy);
 			if (new_velocity)
 			p.velocity.normalize(new_velocity + 0.000001);
 			else
 			p.velocity = Vec3(0.0, 0.0, 0.0);
 #else	// Fast but obfuscated
 			const coord_t new_velocity_squared = 2.0 * new_velocity_energy;
-			if (new_velocity_squared)
-				p.velocity *= invsqrt(p.velocity.magnitude_squared() / new_velocity_squared + 0.000001);
+			if (std::abs(new_velocity_squared) > 0.00001)
+				p.velocity /= std::sqrt(p.velocity.magnitude_squared() / new_velocity_squared + 0.000001);
 			else
-				p.velocity = Vec3(0.0, 0.0, 0.0);
+				p.velocity = Vec3(0.0, 0.0, 1.0);
 #endif
 		}
 
@@ -1788,10 +1799,10 @@ namespace ec
 		else
 		obstruction_velocity = Vec3(0.0, 0.0, 0.0);
 #else	// Fast but obfuscated.
-		if (grad_mag_squared)
-			obstruction_velocity *= invsqrt(obstruction_velocity.magnitude_squared() / (grad_mag_squared + 0.00001) + 0.00001);
+		if (std::abs(grad_mag_squared) > 0.00001)
+			obstruction_velocity /= std::sqrt(obstruction_velocity.magnitude_squared() / (grad_mag_squared + 0.00001) + 0.00001);
 		else
-			obstruction_velocity = Vec3(0.0, 0.0, 0.0);
+			obstruction_velocity = Vec3(0.0, 0.0, 1.0);
 #endif
 		const coord_t obstruction_velocity_energy = 0.5
 			* obstruction_velocity.magnitude_squared();
@@ -1811,7 +1822,7 @@ namespace ec
 
 	coord_t GravityMover::gravity_dist(const Particle& p, const Vec3& center) const
 	{
-		return fastsqrt(square(p.pos.x - center.x) + square(p.pos.y - center.y) + square(p.pos.z - center.z));
+		return std::sqrt(square(p.pos.x - center.x) + square(p.pos.y - center.y) + square(p.pos.z - center.z));
 	}
 
 	energy_t GravityMover::calculate_energy(const Particle& p) const
@@ -1844,7 +1855,7 @@ namespace ec
 
 	Vec3 IFSRingElement::get_new_coords(const Vec3& pos)
 	{
-		const coord_t r= fastsqrt(square(pos.x) + square(pos.z));
+		const coord_t r= std::sqrt(square(pos.x) + square(pos.z));
 		const Vec3 result((pos.x + numerator_adjust.x) / (r
 			+ denominator_adjust.x), 0.0, (pos.z + numerator_adjust.z) / (r
 			+ denominator_adjust.z));
@@ -1864,7 +1875,7 @@ namespace ec
 
 	Vec3 IFS2DSwirlElement::get_new_coords(const Vec3& pos)
 	{
-		const coord_t r= fastsqrt(square(pos.x) + square(pos.z));
+		const coord_t r= std::sqrt(square(pos.x) + square(pos.z));
 		const angle_t theta_x = atan(pos.z);
 		const angle_t theta_z = atan(pos.x);
 		const Vec3 result(r * cos(theta_x + r), 0.0, r * cos(theta_z + r));
@@ -1934,7 +1945,7 @@ namespace ec
 	{
 		Vec3 ret;
 		ret.randomize();
-		ret.normalize(randcoord() * radius);
+		ret *= randcoord_non_zero() * radius;
 		return ret;
 	}
 
@@ -1942,10 +1953,11 @@ namespace ec
 	{
 		Vec3 ret;
 		ret.randomize();
-		ret.normalize(randcoord());
+		ret *= randcoord_non_zero();
 		ret.x *= radius.x;
 		ret.y *= radius.y;
 		ret.z *= radius.z;
+
 		return ret;
 	}
 
@@ -1953,7 +1965,8 @@ namespace ec
 	{
 		Vec3 ret;
 		ret.randomize();
-		ret.normalize(radius);
+		ret *= radius;
+
 		return ret;
 	}
 
@@ -1961,10 +1974,10 @@ namespace ec
 	{
 		Vec3 ret;
 		ret.randomize();
-		ret.normalize();
 		ret.x *= radius.x;
 		ret.y *= radius.y;
 		ret.z *= radius.z;
+
 		return ret;
 	}
 
@@ -2021,7 +2034,7 @@ namespace ec
 	{
 		const angle_t angle= randangle(2 * PI);
 		const coord_t radius = bounding_range->get_radius(angle);
-		const coord_t scalar= fastsqrt(randcoord());
+		const coord_t scalar= std::sqrt(randcoord());
 		return Vec3(sin(angle) * scalar * radius, 0.0, cos(angle) * scalar
 			* radius);
 	}
@@ -2565,39 +2578,39 @@ namespace ec
 		{
 			while (light_particles.size() < lights.size())
 				light_particles.push_back(std::pair<Particle*, float>(particles[randint((int)particles.size())], 0.0));
-				for (int i = 0; i < (int)light_particles.size(); i++)
+			for (int i = 0; i < (int)light_particles.size(); i++)
+			{
+				Particle* p = light_particles[i].first;
+				if (p->get_light_level() < 0.00005)
 				{
-					Particle* p = light_particles[i].first;
-					if (p->get_light_level() < 0.00005)
+					int j;
+					for (j = 0; j < 40; j++)
 					{
-						int j;
-						for (j = 0; j < 40; j++)
-						{
-							light_particles[i] = std::pair<Particle*, float>(*(particles.begin() + randint((int)particles.size())), 0.0);
-							Particle* p = light_particles[i].first;
-							if (p->get_light_level()> 0.0001)
-							break;
-						}
-						if (j == 40)
-						continue;
+						light_particles[i] = std::pair<Particle*, float>(*(particles.begin() + randint((int)particles.size())), 0.0);
+						Particle* p = light_particles[i].first;
+						if (p->get_light_level()> 0.0001)
+						break;
 					}
+					if (j == 40)
+						continue;
+				}
 
-					light_particles[i].second += time_diff / 100000.0;
-					if (light_particles[i].second >= 1.0)
+				light_particles[i].second += time_diff / 100000.0;
+				if (light_particles[i].second >= 1.0)
 					light_particles[i].second = 1.0;
 
-					const light_t light_level = p->get_light_level() * light_particles[i].second;
-					const GLenum light_id = lights[i];
-					const GLfloat light_pos[4] =
+				const light_t light_level = p->get_light_level() * light_particles[i].second;
+				const GLenum light_id = lights[i];
+				const GLfloat light_pos[4] =
 					{	p->pos.x, p->pos.y, p->pos.z, 1.0};
-					const light_t brightness = light_estimate * lighting_scalar * light_level;
-					const GLfloat light_color[4] =
+				const light_t brightness = light_estimate * lighting_scalar * light_level;
+				const GLfloat light_color[4] =
 					{	p->color[0] * brightness, p->color[1] * brightness, p->color[2] * brightness, 0.0};
-					glEnable(light_id);
-					glLightfv(light_id, GL_POSITION, light_pos);
-					glLightfv(light_id, GL_DIFFUSE, light_color);
-				}
-				for (int i = (int)light_particles.size(); i < (int)lights.size(); i++)
+				glEnable(light_id);
+				glLightfv(light_id, GL_POSITION, light_pos);
+				glLightfv(light_id, GL_DIFFUSE, light_color);
+			}
+			for (int i = (int)light_particles.size(); i < (int)lights.size(); i++)
 				glDisable(lights[i]);
 		}
 		else
@@ -2783,7 +2796,7 @@ namespace ec
 			for (std::vector<Effect*>::iterator iter = effects.begin(); iter != effects.end(); iter++)
 			(*iter)->request_LOD(change_LOD);
 
-			const float particle_cleanout_rate = (1.0 - math_cache.powf_05_close(5.0 / (framerate * square(change_LOD))));
+			const float particle_cleanout_rate = (1.0 - std::pow(0.5f, 5.0f / (framerate * square(change_LOD))));
 			//  std::cout << (1.0 / particle_cleanout_rate) << std::endl;
 			float counter = randfloat();
 			for (int i = 0; i < (int)particles.size(); ) //Iterate using an int, not an iterator, because we may be adding/deleting entries, and that messes up iterators.

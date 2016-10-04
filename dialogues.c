@@ -2,6 +2,7 @@
 #include <string.h>
 #include <SDL_endian.h>
 #include "context_menu.h"
+#include "console.h"
 #include "elconfig.h"
 #include "dialogues.h"
 #include "asc.h"
@@ -21,6 +22,7 @@
 
 unsigned char dialogue_string[2048];
 unsigned char npc_name[20] = "";
+char npc_mark_str[20] = "%s (npc)";
 int cur_portrait=8;
 int portraits_tex[MAX_PORTRAITS_TEXTURES];
 
@@ -60,6 +62,7 @@ static int npc_name_x_start,npc_name_len;
 #define MAX_SAVED_RESPONSES 8
 static size_t saved_response_list_top = 0;
 static size_t saved_response_list_bot = 0;
+static size_t saved_response_list_cur = 0;
 static size_t saved_response_init = 0;
 static response saved_responses[MAX_SAVED_RESPONSES];
 static int cm_dialogue_repeat_handler(window_info *win, int widget_id, int mx, int my, int option);
@@ -131,13 +134,13 @@ void build_response_entries (const Uint8 *data, int total_length)
 		for(i=0;i<MAX_RESPONSES;i++)
 			if (dialogue_responces[i].in_use && (dialogue_responces[i].to_actor != saved_responses[saved_response_list_top].to_actor))
 			{
-				saved_response_list_bot = saved_response_list_top = saved_response_init = 0;
+				saved_response_list_bot = saved_response_list_top = saved_response_init = saved_response_list_cur = 0;
 				cm_set(cm_dialog_repeat_id, "--\n", NULL);
 				break;
 			}
 }
 
-int	display_dialogue_handler(window_info *win)
+static int	display_dialogue_handler(window_info *win)
 {
 	int i;
 	float u_start,v_start,u_end,v_end;
@@ -247,10 +250,10 @@ int	display_dialogue_handler(window_info *win)
 
 	glColor3f(1.0f,1.0f,1.0f);
 	if(y_start>win->orig_len_y)//automatically Y-resizing window if there are a lot of options
-	    win->len_y=y_start;
-    else
-        win->len_y=win->orig_len_y;
-        
+		win->len_y=y_start;
+	else
+		win->len_y=win->orig_len_y;
+
 	//now, draw the character name
 	glColor3f(1.0f,1.0f,1.0f);
 	draw_string_small(npc_name_x_start,win->len_y-(SMALL_FONT_Y_LEN+1),npc_name,1);
@@ -314,7 +317,7 @@ void close_dialogue()
 	}
 }
 
-int mouseover_dialogue_handler(window_info *win, int mx, int my)
+static int mouseover_dialogue_handler(window_info *win, int mx, int my)
 {
 	int i;
 	
@@ -368,7 +371,25 @@ int mouseover_dialogue_handler(window_info *win, int mx, int my)
 }
 
 
-void save_response(const response *last_response)
+#if 0
+/* just for debug */
+static void show_response_list(void)
+{
+	size_t i;
+	printf("Responses:-\n");
+	for (i=saved_response_list_top; saved_response_list_bot<MAX_SAVED_RESPONSES; i--)
+	{
+		printf("[%s] %s\n", saved_responses[i].text, ((i==saved_response_list_cur) ?"*" :""));
+		if (i == saved_response_list_bot)
+			break;
+		if (i == 0)
+			i = MAX_SAVED_RESPONSES;
+	}
+	printf("\n");
+}
+#endif
+
+static void save_response(const response *last_response)
 {
 	size_t i;
 
@@ -379,7 +400,10 @@ void save_response(const response *last_response)
 		for (i=saved_response_list_top; saved_response_list_bot<MAX_SAVED_RESPONSES; i--)
 		{
 			if (saved_responses[i].response_id == last_response->response_id)
+			{
+				saved_response_list_cur = i;
 				return;
+			}
 			if (i == saved_response_list_bot)
 				break;
 			if (i == 0)
@@ -397,6 +421,7 @@ void save_response(const response *last_response)
 		saved_response_init = 1;
 
 	/* save the response - memcpy() ok as no pointers */
+	saved_response_list_cur = saved_response_list_top;
 	memcpy(&saved_responses[saved_response_list_top], last_response, sizeof(response));
 
 	/* rebuild the context menu from current saved responses, newest first */
@@ -478,7 +503,7 @@ static void send_repeat(window_info *win)
 	if (!saved_response_init)
 		return;
 	repeat_end_highlight_time = SDL_GetTicks() + 500;
-	send_response(win, &saved_responses[saved_response_list_top]);
+	send_response(win, &saved_responses[saved_response_list_cur]);
 	do_click_sound();
 }
 
@@ -489,7 +514,7 @@ static void do_copy(void)
 	do_click_sound();
 }
 
-int click_dialogue_handler(window_info *win, int mx, int my, Uint32 flags)
+static int click_dialogue_handler(window_info *win, int mx, int my, Uint32 flags)
 {
 	int i;
 
@@ -525,7 +550,7 @@ int click_dialogue_handler(window_info *win, int mx, int my, Uint32 flags)
 	return 0;
 }
 
-int keypress_dialogue_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_dialogue_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
 {
 	Uint8 ch;
 
@@ -616,12 +641,17 @@ static int cm_dialogue_repeat_handler(window_info *win, int widget_id, int mx, i
 static int cm_npcname_handler(window_info *win, int widget_id, int mx, int my, int option)
 {
 	if (option == 0)
-	{
 		copy_to_clipboard((const char *)npc_name);
-		return 1;
+	else if (option == 1)
+	{
+		char str[80];
+		safe_snprintf(str, sizeof(str), npc_mark_str, npc_name);
+		command_unmark_special(str, strlen(str), 0);
+		command_mark(str, strlen(str));
 	}
 	else
 		return 0;
+	return 1;
 }
 
 void display_dialogue()

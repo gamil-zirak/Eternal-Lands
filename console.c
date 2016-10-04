@@ -17,6 +17,7 @@
 #include "global.h"
 #include "hud.h"
 #include "ignore.h"
+#include "icon_window.h"
 #include "init.h"
 #include "item_lists.h"
 #include "interface.h"
@@ -35,8 +36,9 @@
 #include "tabs.h"
 #include "translate.h"
 #include "url.h"
-#include "user_menus.h"
+#include "command_queue.h"
 #include "counters.h"
+#include "map.h"
 #include "minimap.h"
 #include "errors.h"
 #include "io/elpathwrapper.h"
@@ -733,9 +735,8 @@ int command_calc(char *text, int len)
 	double res;
 	char str[100];
 	int calcerr;
-	
-	res = calc_exp(text);
-	calcerr = calc_geterror();
+
+	res = calc_exp(text, &calcerr);
 	switch (calcerr){
 		case CALCERR_OK:
 			if (trunc(res)==res) safe_snprintf (str,sizeof(str), "%s = %.0f",text,res);
@@ -760,6 +761,22 @@ int command_calc(char *text, int len)
 			break;
 		case CALCERR_LOPSYNTAX:
 			safe_snprintf (str,sizeof(str), "%s = Bad argument for L", text);
+			LOG_TO_CONSOLE (c_orange1, str);
+			break;
+		case CALCERR_EOPSYNTAX:
+			safe_snprintf (str,sizeof(str), "%s = Bad argument for E", text);
+			LOG_TO_CONSOLE (c_orange1, str);
+			break;
+		case CALCERR_NOPSYNTAX:
+			safe_snprintf (str,sizeof(str), "%s = Bad argument for N", text);
+			LOG_TO_CONSOLE (c_orange1, str);
+			break;
+		case CALCERR_ZOPSYNTAX:
+			safe_snprintf (str,sizeof(str), "%s = Bad argument for Z", text);
+			LOG_TO_CONSOLE (c_orange1, str);
+			break;
+		case CALCERR_QOPSYNTAX:
+			safe_snprintf (str,sizeof(str), "%s = Bad argument for Q", text);
 			LOG_TO_CONSOLE (c_orange1, str);
 			break;
 	}
@@ -805,15 +822,17 @@ int command_mark(char *text, int len)
 
 		for(;isspace(*text); text++);
 		if(strlen(text) > 0) {
-			put_mark_on_current_position(text);
-			safe_snprintf (str, sizeof(str), marked_str, text);
-			LOG_TO_CONSOLE(c_orange1,str);
+			if (put_mark_on_current_position(text))
+			{
+				safe_snprintf (str, sizeof(str), marked_str, text);
+				LOG_TO_CONSOLE(c_orange1,str);
+			}
 		}
 	}
 	return 1;
 }
 
-int command_unmark(char *text, int len)
+int command_unmark_special(char *text, int len, int do_log)
 {
 	int i;
 
@@ -827,15 +846,25 @@ int command_unmark(char *text, int len)
 			{
 				char str[512];
 				marks[i].x = marks[i].y = -1;
+				if (do_log)
+				{
+					safe_snprintf(str, sizeof(str), unmarked_str, marks[i].text);
+					LOG_TO_CONSOLE(c_orange1, str);
+				}
 				save_markings();
-				safe_snprintf(str, sizeof(str), unmarked_str, marks[i].text);
-				LOG_TO_CONSOLE(c_orange1, str);
+				load_map_marks(); // simply to compact the array and make room for new marks
 				break;
 			}
 		}
 	}
 	return 1;
 }
+
+int command_unmark(char *text, int len)
+{
+	return command_unmark_special(text, len, 1);
+}
+
 
 int command_mark_color(char *text, int len)
 {
@@ -931,11 +960,10 @@ int command_ver(char *text, int len)
 	return 1;
 }
 
-int command_ignore(char *text, int len)
+int command_ignore(const char *text, int len)
 {
 	char name[MAX_USERNAME_LENGTH];
 	int i;
-	Uint8 ch='\0';
 	int result;
 
 	while (isspace(*text))
@@ -943,12 +971,9 @@ int command_ignore(char *text, int len)
 
 	for (i = 0; i < MAX_USERNAME_LENGTH - 1; i++)
 	{
-		ch = text[i];
+		Uint8 ch = text[i];
 		if (ch == ' ' || ch == '\0')
-		{
-			ch = '\0';
 			break;
-		}
 		name[i] = ch;
 	}
 	name[i] = '\0';
@@ -1280,19 +1305,18 @@ int command_log_conn_data(char *text, int len)
 // TODO: make this automatic or a better command, m is too short
 int command_msg(char *text, int len)
 {
-	int no;//, m=-1;
+	int no;
 
 	// find first space, then skip any spaces
 	text = getparams(text);
-	if(my_strncompare(text, "all", 3)) {
-		for(no = 0; no < pm_log.ppl; no++) {
-			print_message(no);
-		}
-	} else {
+	if(my_strncompare(text, "all", 3))
+	{
+		print_all_messages();
+	}
+	else
+	{
 		no = atoi(text) - 1;
-		if(no < pm_log.ppl && no >= 0) {
-			print_message(no);
-		}
+		print_message(no);
 	}
 	return 1;
 }
@@ -1409,14 +1433,14 @@ static int command_open_url(char *text, int len)
 }
 
 
-/* set the user menu wait time between commands */
+/* set the command queues wait time between commands */
 static int command_set_user_menu_wait_time_ms(char *text, int len)
 {
 	text = getparams(text);
 	if (*text)
-		set_user_menu_wait_time_ms(atol(text));
+		set_command_queue_wait_time_ms(atol(text));
 	else
-		set_user_menu_wait_time_ms(0);
+		set_command_queue_wait_time_ms(0);
 	return 1;
 }
 
@@ -1581,7 +1605,7 @@ int command_keypress(char *text, int len)
 	{
 		Uint32 value = get_key_value(text);
 		if (value)
-			keypress_root_common(value, 0);
+			do_keypress(value);
 	}
 	return 1;
 }
@@ -1603,9 +1627,45 @@ int save_local_data(char * text, int len){
 	// should be renamed when NEW_QUESTLOG #def is removed
 	unload_questlog();
 	save_item_lists();
-	LOG_TO_CONSOLE(c_green1, "Local files saved, asking server to save too...");
+	save_channel_colors();
+	LOG_TO_CONSOLE(c_green1, local_save_str);
 	return 0;
 }
+
+
+//	On a regular basis, send the "#save" command to the server and save local data.
+//
+void auto_save_local_and_server(void)
+{
+	time_t time_delta = 60 * 90;
+	actor *me;
+
+	me = get_our_actor();
+	if(!disconnected && me && !me->fighting && ((last_save_time + time_delta) <= time(NULL)))
+	{
+		last_save_time = time(NULL);
+		save_local_data(NULL, 0);
+		send_input_text_line("#save", 5);
+	}
+}
+
+
+/* show counters for this session */
+static int session_counters(char *text, int len)
+{
+	text = getparams(text);
+	print_session_counters(text);
+	return 1;
+}
+
+
+/* initilates a test for server connection, the client will enter the disconnected state if needed */
+static int command_relogin(char *text, int len)
+{
+	start_testing_server_connection();
+	return 1;
+}
+
 
 #ifdef CONTEXT_MENUS_TEST
 int cm_test_window(char *text, int len);
@@ -1693,6 +1753,7 @@ add_command("horse", &horse_cmd);
 	add_command(cmd_afk, &command_afk);
 	add_command("jc", &command_jlc);//since we only mess with the part after the
 	add_command("lc", &command_jlc);//command, one function can do both
+	add_command("channel_colors", &command_channel_colors);
 	add_command(help_cmd_str, &command_help);
 	add_command("sto", &command_storage);
 	add_command("storage", &command_storage);
@@ -1704,6 +1765,7 @@ add_command("horse", &horse_cmd);
 	add_command("save", &save_local_data);
 	add_command("url", &url_command);
 	add_command("chat_to_counters", &chat_to_counters_command);
+	add_command(cmd_session_counters, &session_counters);
 	add_command("exp", &show_exp);
 #ifdef CONTEXT_MENUS_TEST
 	add_command("cmtest", &cm_test_window);
@@ -1714,11 +1776,16 @@ add_command("horse", &horse_cmd);
 	add_command("aliases", &aliases_command);
 #endif
 	add_command("ckdata", &command_ckdata);
+#if defined(BUFF_DURATION_DEBUG)
+	add_command("buffd", &command_buff_duration);
+#endif
+	add_command(cmd_reload_icons, &reload_icon_window);
 	add_command(cmd_open_url, &command_open_url);
 	add_command(cmd_show_spell, &command_show_spell);
 	add_command(cmd_cast_spell, &command_cast_spell);
 	add_command(cmd_keypress, &command_keypress);
 	add_command(cmd_user_menu_wait_time_ms, &command_set_user_menu_wait_time_ms);
+	add_command("relogin", &command_relogin);
 	command_buffer_offset = NULL;
 }
 
@@ -1727,6 +1794,9 @@ add_command("horse", &horse_cmd);
 
 void print_version_string (char *buf, size_t len)
 {
+#ifdef GIT_VERSION
+	safe_snprintf (buf, len, "%s %s", game_version_prefix_str, GIT_VERSION);
+#else
 	char extra[100];
 	
 	if (client_version_patch > 0)
@@ -1738,6 +1808,7 @@ void print_version_string (char *buf, size_t len)
 		safe_snprintf (extra, sizeof(extra), " %s", DEF_INFO);
 	}
 	safe_snprintf (buf, len, game_version_str, client_version_major, client_version_minor, client_version_release, extra);
+#endif
 }
 
 void new_minute_console(void){

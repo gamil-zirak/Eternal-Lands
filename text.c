@@ -6,6 +6,7 @@
 #include "achievements.h"
 #include "actors.h"
 #include "asc.h"
+#include "books.h"
 #include "buddy.h"
 #include "chat.h"
 #include "console.h"
@@ -16,6 +17,7 @@
 #include "gl_init.h"
 #include "global.h"
 #include "hud.h"
+#include "highlight.h"
 #include "init.h"
 #include "lights.h"
 #include "misc.h"
@@ -31,6 +33,7 @@
 #include "serverpopup.h"
 #include "sky.h"
 #include "sound.h"
+#include "trade_log.h"
 #include "actor_scripts.h"
 #include "emotes.h"
 
@@ -49,6 +52,19 @@ Uint32 last_server_message_time;
 int lines_to_show=0;
 
 int show_timestamp = 0;
+
+int dark_channeltext = 0;
+
+static int is_special_day = 0;
+int today_is_special_day(void) { return is_special_day; };
+void set_today_is_special_day(void) { is_special_day = 1; };
+void clear_today_is_special_day(void) { is_special_day = 0; };
+
+/* functions to count, return and clear the number of PM or MODPM seen */
+static int seen_pm_count = 0;
+static void inc_seen_pm_count(void) { seen_pm_count++; }
+int get_seen_pm_count(void) { return seen_pm_count; }
+void clear_seen_pm_count(void) { seen_pm_count = 0; }
 
 int log_chat = LOG_SERVER;
 
@@ -409,13 +425,13 @@ int parse_text_for_emote_commands(const char *text, int len)
 void check_harvesting_effect(void)
 {
 	/* if the harvesting effect is on but we're not harvesting, stop it */
-	if ((!harvesting || !use_harvesting_eye_candy) && (harvesting_effect_reference != NULL))
+	if ((!now_harvesting() || !use_harvesting_eye_candy) && (harvesting_effect_reference != NULL))
 	{
 		ec_recall_effect(harvesting_effect_reference);
 		harvesting_effect_reference = NULL;
 	}
 	/* but if we are harvesting but there is no effect, start it if wanted */
-	else if (harvesting && use_eye_candy && use_harvesting_eye_candy && (harvesting_effect_reference == NULL))
+	else if (now_harvesting() && use_eye_candy && use_harvesting_eye_candy && (harvesting_effect_reference == NULL))
 	{
 		actor *act;
 		LOCK_ACTORS_LISTS();
@@ -521,6 +537,7 @@ int filter_or_ignore_text (char *text_to_add, int len, int size, Uint8 channel)
 	if (from_color_char (text_to_add[0]) == c_green1 && my_strncompare(text_to_add+1,"Game Time", 9))
 	{
 		real_game_second = atoi(&text_to_add[18]);
+		set_real_game_second_valid();
 		next_second_time = cur_time + 1000;
         new_second();
 	}
@@ -535,18 +552,17 @@ int filter_or_ignore_text (char *text_to_add, int len, int size, Uint8 channel)
 		if (my_strncompare(text_to_add+1, "You started to harvest ", 23)) {
 			strncpy(harvest_name, text_to_add+1+23, len-1-23-1);
 			harvest_name[len-1-23-1] = '\0';
-			harvesting = 1;
+			set_now_harvesting();
 		}
 		else if ((my_strncompare(text_to_add+1, "You stopped harvesting.", 23)) ||
 			(my_strncompare(text_to_add+1, "You can't harvest while fighting (duh)!", 39)) ||
 			(my_strncompare(text_to_add+1, "You can't do that while trading!", 32)) ||
-			(my_strncompare(text_to_add+1, "You are too far away! Get closer!", 33)) ||
 			(my_strncompare(text_to_add+1, "You can't harvest here", 22)) ||
 			(my_strncompare(text_to_add+1, "You lack the knowledge of ", 26)) ||
 			((my_strncompare(text_to_add+1, "You need to wear ", 17) && strstr(text_to_add, "order to harvest") != NULL)) ||
 			((my_strncompare(text_to_add+1, "You need to have a ", 19) && strstr(text_to_add, "order to harvest") != NULL)))
 		{
-			harvesting = 0;
+			clear_now_harvesting();
 		}
 		else if (is_death_message(text_to_add+1)) {
 			// nothing to be done here cause all is done in the test function
@@ -579,12 +595,54 @@ int filter_or_ignore_text (char *text_to_add, int len, int size, Uint8 channel)
 		else if (my_strncompare(text_to_add+1, "You see: ", 9)) {
 			achievements_player_name(text_to_add+10, len-10);
 		}
-		else if (my_strncompare(text_to_add+1, "You just got food poisoned!", 27)) {
+		else if ((my_strncompare(text_to_add+1, "You just got food poisoned!", 27)) ||
+			(my_strncompare(text_to_add+1, "Oh well, no invisibility, but we got poisoned.", 46)))
+		{
 			increment_poison_incidence();
 		}
-		
+		else if (strstr(text_to_add+1, "aborted the trade.")) {
+			trade_aborted(text_to_add+1);
+		}
+		else if (strstr(text_to_add+1, "Trade session failed")) {
+			trade_aborted(text_to_add+1);
+		}
+		else if (strstr(text_to_add+1, "You have been saved!")) {
+			last_save_time = time(NULL);
+		}
+		else if (strstr(text_to_add+1, "Day ends:") || strstr(text_to_add+1, "This day was removed by ")) {
+			clear_today_is_special_day();
+		}
+		else if (strstr(text_to_add+1, "Today is a special day:")) {
+			set_today_is_special_day();
+		}
+		else if (strstr(text_to_add+1, "You'd need a pair of binoculars to read the book from here - get closer!")) {
+			if (book_opened == -1)
+				return 0;
+		}
+		else {
+			static Uint32 last_time[] = { 0, 0 };
+			static int done_one[] = { 0, 0 };
+			int match_index = -1;
+			if (my_strncompare(text_to_add+1, "You are too far away! Get closer!", 33))
+				match_index = 0;
+			else if (my_strncompare(text_to_add+1, "Can't do, your target is already fighting with someone else,", 60))
+				match_index = 1;
+			if (match_index > -1)
+			{
+				Uint32 new_time = SDL_GetTicks();
+				clear_now_harvesting();
+				if(your_actor != NULL)
+					add_highlight(your_actor->x_tile_pos,your_actor->y_tile_pos, HIGHLIGHT_SOFT_FAIL);
+				/* suppress further messages within for 5 seconds of last */
+				if (done_one[match_index] && (abs(new_time - last_time[match_index]) < 5000))
+					return 0;
+				done_one[match_index] = 1;
+				last_time[match_index] = new_time;
+			}
+		}
+
 	} else if (channel == CHAT_LOCAL) {
-		if (harvesting && my_strncompare(text_to_add+1, username_str, strlen(username_str))) {
+		if (now_harvesting() && my_strncompare(text_to_add+1, username_str, strlen(username_str))) {
 			char *ptr = text_to_add+1+strlen(username_str);
 			if (my_strncompare(ptr, " found a ", 9)) {
 				ptr += 9;
@@ -607,6 +665,12 @@ int filter_or_ignore_text (char *text_to_add, int len, int size, Uint8 channel)
 		display_server_popup_win(text_to_add);
 	}
 
+	// look for astrology messages
+	if((channel == CHAT_SERVER) && is_astrology_message (text_to_add))
+	{
+		return 0;
+	}
+
 	//Make sure we don't check our own messages.
 	if( !(channel == CHAT_PERSONAL && len >= strlen(pm_from_str) && strncasecmp (text_to_add+1, pm_from_str, strlen(pm_from_str)) != 0) &&
 		!(channel == CHAT_MODPM && len >= strlen(mod_pm_from_str) && strncasecmp (text_to_add+1, mod_pm_from_str, strlen(mod_pm_from_str)) != 0)
@@ -618,6 +682,8 @@ int filter_or_ignore_text (char *text_to_add, int len, int size, Uint8 channel)
 			return 0;
 		}
 		//All right, we do not ignore the person
+		if (channel == CHAT_PERSONAL || channel == CHAT_MODPM)
+			inc_seen_pm_count();
 		if (afk)
 		{
 			if (channel == CHAT_PERSONAL || channel == CHAT_MODPM)
@@ -703,12 +769,6 @@ int filter_or_ignore_text (char *text_to_add, int len, int size, Uint8 channel)
 			}
 			add_buddy_confirmation (name);
 		}
-	}
-
-	// look for astrology messages
-	if((channel == CHAT_SERVER) && is_astrology_message (text_to_add))
-	{
-		return 0;
 	}
 
 	// filter any naughty words out
@@ -824,7 +884,7 @@ int put_string_in_buffer (text_message *buf, const Uint8 *str, int pos)
 	for (ib = 0; str[ib] && nr_paste < nr_free; ib++)
 	{
 		ch = str[ib];
-		if (is_printable (ch))
+		if (is_printable (ch) || ch == '\n')
 			nr_paste++;
 	}
 
@@ -849,6 +909,8 @@ int put_string_in_buffer (text_message *buf, const Uint8 *str, int pos)
 	for (ib = 0; str[ib]; ib++)
 	{
 		ch = str[ib];
+		if (ch == '\n')
+			ch = ' ';
 		if (is_printable (ch))
 		{
 			buf->data[pos+jb] = ch;
@@ -862,8 +924,8 @@ int put_string_in_buffer (text_message *buf, const Uint8 *str, int pos)
 void put_colored_text_in_buffer (Uint8 color, Uint8 channel, const Uint8 *text_to_add, int len)
 {
 	text_message *msg;
-	int minlen;
-	Uint32 cnr = 0, ibreak = -1;
+	int minlen, text_color;
+	Uint32 cnr = 0, ibreak = -1, jbreak = -1;
 	char time_stamp[12];
 	struct tm *l_time; time_t c_time;
 
@@ -927,6 +989,19 @@ void put_colored_text_in_buffer (Uint8 color, Uint8 channel, const Uint8 *text_t
 		}
 	}
 
+	if (channel == CHAT_LOCAL)
+	{
+		for (jbreak = 0; jbreak < len; jbreak++)
+		{
+			if (text_to_add[jbreak] == ':' && text_to_add[jbreak+1] == ' ') break;
+		}
+	}
+
+	if (dark_channeltext==1)
+		text_color = c_grey2;
+	else if (dark_channeltext==2)
+		text_color = c_grey4;
+
 	if (ibreak >= len)
 	{
 		// not a channel, or something's messed up
@@ -947,17 +1022,32 @@ void put_colored_text_in_buffer (Uint8 color, Uint8 channel, const Uint8 *text_t
 			// color set by server
 			if (show_timestamp)
 			{
-				safe_snprintf (msg->data, msg->size, "%c%s%.*s", text_to_add[0], time_stamp, len-1, &text_to_add[1]);
+				if(dark_channeltext && channel==CHAT_LOCAL && from_color_char(text_to_add[0])==c_grey1 && jbreak < (len-3))
+				{
+					safe_snprintf (msg->data, msg->size, "%c%s%.*s%.*s", to_color_char (text_color), time_stamp, jbreak+1, &text_to_add[1], len-jbreak-3, &text_to_add[jbreak+3]);
+				}
+				else
+				{
+					safe_snprintf (msg->data, msg->size, "%c%s%.*s", text_to_add[0], time_stamp, len-1, &text_to_add[1]);
+				}
 			}
 			else
 			{
-				safe_snprintf (msg->data, msg->size, "%.*s", len, text_to_add);
+				if(dark_channeltext && channel==CHAT_LOCAL && from_color_char(text_to_add[0])==c_grey1 && jbreak < (len-3))
+				{
+					safe_snprintf (msg->data, msg->size, "%c%.*s%.*s", to_color_char (text_color), jbreak+1, &text_to_add[1], len-jbreak-3, &text_to_add[jbreak+3]);
+				}
+				else
+				{
+					safe_snprintf (msg->data, msg->size, "%.*s", len, text_to_add);
+				}
 			}
 		}
 	}
 	else
 	{
 		char nr_str[16];
+		int has_additional_color = is_color(text_to_add[ibreak+3]);
 		if (cnr >= 1000000000)
 			safe_snprintf (nr_str, sizeof (nr_str), "guild");
 		else
@@ -968,11 +1058,25 @@ void put_colored_text_in_buffer (Uint8 color, Uint8 channel, const Uint8 *text_t
 			// force the color
 			if (show_timestamp)
 			{
-				safe_snprintf (msg->data, msg->size, "%c%s%.*s @ %s%.*s", to_color_char (color), time_stamp, ibreak, text_to_add, nr_str, len-ibreak, &text_to_add[ibreak]);
+				if (dark_channeltext)
+				{
+					safe_snprintf (msg->data, msg->size, "%c%s%.*s @ %s%.*s%c%.*s", to_color_char (color), time_stamp, ibreak, text_to_add, nr_str, 3, &text_to_add[ibreak], to_color_char (text_color), len-ibreak-3-has_additional_color, &text_to_add[ibreak+3+has_additional_color]);
+				}
+				else
+				{
+					safe_snprintf (msg->data, msg->size, "%c%s%.*s @ %s%.*s", to_color_char (color), time_stamp, ibreak, text_to_add, nr_str, len-ibreak, &text_to_add[ibreak]);
+				}
 			}
 			else
 			{
-				safe_snprintf (msg->data, msg->size, "%c%.*s @ %s%.*s", to_color_char (color), ibreak, text_to_add, nr_str, len-ibreak, &text_to_add[ibreak]);
+				if (dark_channeltext)
+				{
+					safe_snprintf (msg->data, msg->size, "%c%.*s @ %s%.*s%c%.*s", to_color_char (color), ibreak, text_to_add, nr_str, 3, &text_to_add[ibreak], to_color_char (text_color), len-ibreak-3-has_additional_color, &text_to_add[ibreak+3+has_additional_color]);
+				}
+				else
+				{
+					safe_snprintf (msg->data, msg->size, "%c%.*s @ %s%.*s", to_color_char (color), ibreak, text_to_add, nr_str, len-ibreak, &text_to_add[ibreak]);
+				}
 			}
 		}
 		else
@@ -980,11 +1084,25 @@ void put_colored_text_in_buffer (Uint8 color, Uint8 channel, const Uint8 *text_t
 			// color set by server
 			if (show_timestamp)
 			{
-				safe_snprintf (msg->data, msg->size, "%c%s%.*s @ %s%.*s", text_to_add[0], time_stamp, ibreak-1, &text_to_add[1], nr_str, len-ibreak, &text_to_add[ibreak]);
+				if (dark_channeltext)
+				{
+					safe_snprintf (msg->data, msg->size, "%c%s%.*s @ %s%.*s%c%.*s", text_to_add[0], time_stamp, ibreak-1, &text_to_add[1], nr_str, 3, &text_to_add[ibreak], to_color_char (text_color), len-ibreak-3-has_additional_color, &text_to_add[ibreak+3+has_additional_color]);
+				}
+				else
+				{
+					safe_snprintf (msg->data, msg->size, "%c%s%.*s @ %s%.*s", text_to_add[0], time_stamp, ibreak-1, &text_to_add[1], nr_str, len-ibreak, &text_to_add[ibreak]);
+				}
 			}
 			else
 			{
-				safe_snprintf (msg->data, msg->size, "%.*s @ %s%.*s", ibreak, text_to_add, nr_str, len-ibreak, &text_to_add[ibreak]);
+				if (dark_channeltext)
+				{
+					safe_snprintf (msg->data, msg->size, "%.*s @ %s%.*s%c%.*s", ibreak, text_to_add, nr_str, 3, &text_to_add[ibreak], to_color_char (text_color), len-ibreak-3-has_additional_color, &text_to_add[ibreak+3+has_additional_color]);
+				}
+				else
+				{
+					safe_snprintf (msg->data, msg->size, "%.*s @ %s%.*s", ibreak, text_to_add, nr_str, len-ibreak, &text_to_add[ibreak]);
+				}
 			}
 		}
 	}

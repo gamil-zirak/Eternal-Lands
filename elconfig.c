@@ -27,6 +27,7 @@
  #include "chat.h"
  #include "console.h"
  #include "counters.h"
+ #include "dialogues.h"
  #include "draw_scene.h"
  #include "errors.h"
  #include "elwindows.h"
@@ -34,9 +35,11 @@
  #include "gamewin.h"
  #include "gl_init.h"
  #include "hud.h"
+ #include "hud_indicators.h"
  #include "init.h"
  #include "interface.h"
  #include "items.h"
+ #include "item_info.h"
  #include "manufacture.h"
  #include "map.h"
  #include "mapwin.h"
@@ -49,6 +52,7 @@
  #include "questlog.h"
  #include "reflection.h"
  #include "serverpopup.h"
+ #include "session.h"
  #include "shadows.h"
  #include "sound.h"
  #include "spells.h"
@@ -56,6 +60,7 @@
  #include "storage.h"
  #include "tabs.h"
  #include "trade.h"
+ #include "trade_log.h"
  #include "weather.h"
  #include "minimap.h"
  #ifdef NEW_ALPHA
@@ -526,7 +531,7 @@ static void consolidate_rotate_chat_log_status(void)
 	if ((rotate_chat_log==1) && !rotate_chat_log_config_var)
 	{
 		rotate_chat_log_config_var = 1;
-		set_var_unsaved("rotate_chat_log", OPT_BOOL);
+		set_var_unsaved("rotate_chat_log", INI_FILE_VAR);
 	}
 }
 
@@ -600,6 +605,7 @@ void change_poor_man(int *poor_man)
 		special_effects= 0;
 		use_eye_candy = 0;
 		use_fog= 0;
+		show_weather = 0;
 #endif
 #ifndef MAP_EDITOR
 		use_frame_buffer= 0;
@@ -783,10 +789,10 @@ int switch_video(int mode, int full_screen)
 		win_bpp = video_modes[index].bpp;
 	}
 
-#ifdef WINDOWS
+#ifndef LINUX
 	LOG_TO_CONSOLE(c_green2, video_restart_str);
 	video_mode=mode;
-	set_var_unsaved("switch_vidmode", INI_FILE_VAR);
+	set_var_unsaved("video_mode", INI_FILE_VAR);
 	return 1;
 #endif
 
@@ -1053,6 +1059,17 @@ void set_buff_icon_size(int *pointer, int value)
 	*pointer = value;
 	/* Turn off icons when the size is zero (or at least low). */
 	view_buffs = (value < 5) ?0: 1;
+}
+
+void change_dark_channeltext(int *dct, int value)
+{
+	*dct = value;
+	if (*dct == 1)
+		set_text_message_color (&input_text_line, 0.6f, 0.6f, 0.6f);
+	else if (*dct == 2)
+		set_text_message_color (&input_text_line, 0.16f, 0.16f, 0.16f);
+	else
+		set_text_message_color (&input_text_line, 1.0f, 1.0f, 1.0f);
 }
 
 void change_windowed_chat (int *wc, int val)
@@ -1397,6 +1414,7 @@ void switch_vidmode(int *pointer, int mode)
 			case 6:
 				window_width=1600;
 				window_height=1200;
+				return;
 			case 7:
 				window_width=1280;
 				window_height=800;
@@ -1409,27 +1427,46 @@ void switch_vidmode(int *pointer, int mode)
 
 int find_var (const char *str, var_name_type type)
 {
-	int i, isvar;
+	size_t i, isvar;
+
+	/* Make a copy of the passed string but only up to the first ' ' or '='.
+	   We can then compare both strings in full, previously, partical
+	   strings would match as we only compared up to the length of the var. */
+	size_t passed_len = strlen(str);
+	char *str_copy = calloc(passed_len+1, sizeof(char));
+	for (i=0; i<passed_len && str[i] != ' ' && str[i] != '='; i++)
+		str_copy[i] = str[i];
 
 	for(i= 0; i < our_vars.no; i++)
 	{
 		if (type != COMMAND_LINE_SHORT_VAR)
-			isvar= !strncmp(str, our_vars.var[i]->name, our_vars.var[i]->nlen);
+			isvar= !strcmp(str_copy, our_vars.var[i]->name);
 		else
-			isvar= !strncmp(str, our_vars.var[i]->shortname, our_vars.var[i]->snlen);
+			isvar= !strcmp(str_copy, our_vars.var[i]->shortname);
 		if (isvar)
+		{
+			free(str_copy);
 			return i;
+		}
 	}
+	free(str_copy);
 	return -1;
 }
 
+const char *get_option_description(const char *str, var_name_type type)
+{
+	int var_index = find_var(str, type);
+	if (var_index == -1)
+	{
+		LOG_ERROR("Can't find var '%s', type %d", str, type);
+		return NULL;
+	}
+	return (const char *)our_vars.var[var_index]->display.desc;
+}
 
 int set_var_unsaved(const char *str, var_name_type type)
 {
-	int var_index;
-
-	var_index = find_var(str, type);
-
+	int var_index = find_var(str, type);
 	if (var_index == -1)
 	{
 		LOG_ERROR("Can't find var '%s', type %d", str, type);
@@ -1441,7 +1478,7 @@ int set_var_unsaved(const char *str, var_name_type type)
 
 int toggle_OPT_BOOL_by_name(const char *str)
 {
-	int var_index = find_var(str, OPT_BOOL);
+	int var_index = find_var(str, INI_FILE_VAR);
 	if ((var_index == -1) || (our_vars.var[var_index]->type != OPT_BOOL))
 	{
 		fprintf(stderr, "%s(): Invalid OPT_BOOL '%s'\n", __FUNCTION__, str);
@@ -1457,9 +1494,7 @@ int toggle_OPT_BOOL_by_name(const char *str)
 // Other types might be useful but I just needed an OPT_INT this time.
 int set_var_OPT_INT(const char *str, int new_value)
 {
-	int var_index;
-
-	var_index = find_var(str, INI_FILE_VAR);
+	int var_index = find_var(str, INI_FILE_VAR);
 
 	if ((var_index != -1) && (our_vars.var[var_index]->type == OPT_INT))
 	{
@@ -1630,6 +1665,9 @@ int check_var (char *str, var_name_type type)
 		our_vars.var[i]->saved= 0;
 	switch (our_vars.var[i]->type)
 	{
+		case OPT_INT_INI:
+			// Needed, because var is never changed through widget
+			our_vars.var[i]->saved= 0;
 		case OPT_INT:
 		case OPT_MULTI:
 		case OPT_MULTI_H:
@@ -1637,7 +1675,6 @@ int check_var (char *str, var_name_type type)
 			our_vars.var[i]->func ( our_vars.var[i]->var, atoi (ptr) );
 			return 1;
 		case OPT_BOOL_INI:
-		case OPT_INT_INI:
 			// Needed, because var is never changed through widget
 			our_vars.var[i]->saved= 0;
 		case OPT_BOOL:
@@ -1839,6 +1876,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"use_full_dialogue_window", "keypressdialoguesfullwindow", &use_full_dialogue_window, change_var, 0, "Keypresses allowed anywhere in dialogue boxes", "If set, the above will work anywhere in the Dialogue Window, if unset only on the NPC's face", CONTROLS);
 	add_var(OPT_BOOL,"use_cursor_on_animal", "useanimal", &include_use_cursor_on_animals, change_var, 0, "For animals, right click includes use cursor", "Toggles inclusion of the use cursor when right clicking on animals, useful for your summoned creatures.  Even when this option is off, you can still click the use icon.", CONTROLS);
 	add_var(OPT_BOOL,"disable_double_click", "disabledoubleclick", &disable_double_click, change_var, 0, "Disable double-click button safety", "Some buttons are protected from mis-click by requiring you to double-click them.  This option disables that protection.", CONTROLS);
+	add_var(OPT_BOOL,"auto_disable_ranging_lock", "adrl", &auto_disable_ranging_lock, change_var, 1, "Auto-disable Ranging Lock when under attack", "Automatically disable Ranging Lock when the char is under attack and Ranging Lock is enabled", CONTROLS);
 	add_var(OPT_BOOL,"achievements_ctrl_click", "achievementsctrlclick", &achievements_ctrl_click, change_var, 0, "Control click required to view achievements", "To view a players achievements, you click on them with the eye cursor.  With this option enabled, you must use Ctrl+click.", CONTROLS);
 	add_var(OPT_INT,"mouse_limit","lmouse",&mouse_limit,change_int,15,"Mouse Limit","You can increase the mouse sensitivity and cursor changing by adjusting this number to lower numbers, but usually the FPS will drop as well!",CONTROLS,1,INT_MAX);
 #ifdef OSX
@@ -1850,6 +1888,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"big_cursors","big_cursors", &big_cursors, change_var,0,"Big Pointers", "Use 32x32 graphics for pointer. Only works with SDL cursor turned off.", CONTROLS);
 	add_var(OPT_FLOAT,"pointer_size","pointer_size", &pointer_size, change_float,1.0,"Pointer Size", "Scale the pointer. 1.0 is 1:1 scale with pointer graphic. Only works with SDL cursor turned off.", CONTROLS,0.25,4.0,0.05);
 #endif // NEW_CURSOR
+	add_var(OPT_MULTI,"trade_log_mode","tradelogmode",&trade_log_mode,change_int, TRADE_LOG_NONE,"Trade log","Set how successful trades are logged.",CONTROLS,"Do not log trades", "Log only to console", "Log only to file", "Log to console and file", NULL);
 	// CONTROLS TAB
 
 
@@ -1858,13 +1897,17 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"view_analog_clock","analog",&view_analog_clock,change_var,1,"Analog Clock","Toggle the analog clock",HUD);
 	add_var(OPT_BOOL,"view_digital_clock","digit",&view_digital_clock,change_var,1,"Digital Clock","Toggle the digital clock",HUD);
 	add_var(OPT_BOOL,"view_knowledge_bar","knowledge_bar",&view_knowledge_bar,change_var,1,"Knowledge Bar","Toggle the knowledge bar",HUD);
+	add_var(OPT_BOOL,"view_hud_timer","timer",&view_hud_timer,change_var,1,"Countdown/Stopwatch Timer","Timer controls: Right-click for menu. Shift-left-click to toggle mode. Left-click to start/stop. Mouse wheel to reset, up/down to change countdown start time (+ctrl/alt to change step).",HUD);
 	add_var(OPT_BOOL,"show_game_seconds","show_game_seconds",&show_game_seconds,change_var,0,"Show Game Seconds","Show seconds on the digital clock. Note: the seconds displayed are computed on client side and synchronized with the server at each new minute.",HUD);
 	add_var(OPT_BOOL,"show_stats_in_hud","sstats",&show_stats_in_hud,change_var,0,"Stats In HUD","Toggle showing stats in the HUD",HUD);
 	add_var(OPT_BOOL,"show_statbars_in_hud","sstatbars",&show_statbars_in_hud,change_var,0,"StatBars In HUD","Toggle showing statbars in the HUD. Needs Stats in HUD",HUD);
 	add_var(OPT_BOOL,"show_action_bar","ssactionbar",&show_action_bar,change_show_action_bar,0,"Action Points Bar in HUD","Show the current action points level in a stats bar on the bottom HUD.",HUD);
+	add_var(OPT_BOOL,"show_indicators","showindicators",&show_hud_indicators,toggle_hud_indicators_window,1,"Show Status Indicators in HUD","Show status indicators for special day (left click to show day), harvesting, poision and message count (left click to zero). Right-click the window for settings.",HUD);
 	add_var(OPT_BOOL,"logo_click_to_url","logoclick",&logo_click_to_url,change_var,0,"Logo Click To URL","Toggle clicking the LOGO opening a browser window",HUD);
 	add_var(OPT_STRING,"logo_link", "logolink", LOGO_URL_LINK, change_string, 128, "Logo Link", "URL when clicking the logo", HUD);
 	add_var(OPT_BOOL,"show_help_text","shelp",&show_help_text,change_var,1,"Help Text","Enable tooltips.",HUD);
+	add_var(OPT_BOOL,"always_enlarge_text","aetext",&always_enlarge_text,change_var,1,"Always Enlarge Text","Some text can be enlarged by pressing ALT or CTRL, often only while the mouse is over it.  Setting this option effectively locks the ALT/CTRL state to on.",HUD);
+	add_var(OPT_BOOL,"show_item_desc_text","showitemdesctext",&show_item_desc_text,change_var,1,"Item Description Text","Enable item description tooltips. Needs item_info.txt file.",HUD);
 	add_var(OPT_BOOL,"use_alpha_border", "aborder", &use_alpha_border, change_var, 1,"Alpha Border","Toggle the use of alpha borders",HUD);	//ADVVID);
 	add_var(OPT_BOOL,"use_alpha_banner", "abanner", &use_alpha_banner, change_var, 0,"Alpha Behind Name/Health Text","Toggle the use of an alpha background to name/health banners",HUD);
 	add_var(OPT_BOOL,"cm_banner_disabled", "cmbanner", &cm_banner_disabled, change_var, 0,"Disable Name/Health Text Context Menu","Disable the context menu on your players name/health banner.",HUD);
@@ -1874,14 +1917,16 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"relocate_quickbar", "requick", &quickbar_relocatable, change_quickbar_relocatable, 0,"Relocate Quickbar","Set whether you can move the quickbar",HUD);
 	add_var(OPT_INT,"num_quickbar_slots","numqbslots",&num_quickbar_slots,change_int,6,"Number Of Quickbar Slots","Set the number of quickbar slots (both inventory & spells) displayed. May be automatically reduced for low resolutions",HUD,1,MAX_QUICKBAR_SLOTS);
 	add_var(OPT_INT,"max_food_level","maxfoodlevel",&max_food_level,change_int,45,"Maximum Food Level", "Set the maximum value displayed by the food level bar.",HUD,10,200);
-	add_var(OPT_INT,"wanted_num_recipe_entries","wantednumrecipeentries",&wanted_num_recipe_entries,change_num_recipe_entries,10,"Number of receipe entries", "Sets the number of entries available for the manufacturing window stored recipes.",HUD,4,max_num_recipe_entries);
+	add_var(OPT_INT,"wanted_num_recipe_entries","wantednumrecipeentries",&wanted_num_recipe_entries,change_num_recipe_entries,10,"Number of recipe entries", "Sets the number of entries available for the manufacturing window stored recipes.",HUD,4,max_num_recipe_entries);
+	add_var(OPT_INT,"exp_log_threshold","explogthreshold",&exp_log_threshold,change_int,5000,"Log exp gain to console", "If you gain experience of this value or over, then a console message will be written.  Set the value to zero to disable completely.",HUD,0,INT_MAX);
+	add_var(OPT_STRING,"npc_mark_template","npcmarktemplate",npc_mark_str,change_string,sizeof(npc_mark_str)-1,"NPC map mark template","The template used when setting a map mark from the NPC dialogue (right click name). The %s is substituted for the NPC name.",HUD);
 	add_var(OPT_BOOL,"3d_map_markers","3dmarks",&marks_3d,change_3d_marks,1,"Enable 3D Map Markers","Shows user map markers in the game window",HUD);
 	add_var(OPT_BOOL,"item_window_on_drop","itemdrop",&item_window_on_drop,change_var,1,"Item Window On Drop","Toggle whether the item window shows when you drop items",HUD);
 	add_var(OPT_FLOAT,"minimap_scale", "minimapscale", &minimap_size_coefficient, change_minimap_scale, 0.7, "Minimap Scale", "Adjust the overall size of the minimap", HUD, 0.5, 1.5, 0.1);
 	add_var(OPT_BOOL,"rotate_minimap","rotateminimap",&rotate_minimap,change_var,1,"Rotate Minimap","Toggle whether the minimap should rotate.",HUD);
 	add_var(OPT_BOOL,"pin_minimap","pinminimap",&pin_minimap,change_var,0,"Pin Minimap","Toggle whether the minimap ignores close-all-windows.",HUD);
 	add_var(OPT_BOOL, "continent_map_boundaries", "cmb", &show_continent_map_boundaries, change_var, 1, "Map Boundaries On Continent Map", "Show map boundaries on the continent map", HUD);
-	add_var(OPT_BOOL,"enable_user_menus", "user_menus", &enable_user_menus, toggle_user_menus, 0, "Enable User Menus","Create .menu files in your config directory.  First line is the menu name. After that, each line is a command using the format \"Menus Text||command\".  Prompt for input using \"command text <prompt text>\". A line can include multiple commands.",HUD);
+	add_var(OPT_BOOL,"enable_user_menus", "user_menus", &enable_user_menus, toggle_user_menus, 0, "Enable User Menus","Create .menu files in your config directory.  First line is the menu name. After that, each line is a command using the format \"Menus Text || command || command\".  Prompt for input using \"command text <prompt text>\".",HUD);
 	add_var(OPT_BOOL,"console_scrollbar_enabled", "console_scrollbar", &console_scrollbar_enabled, toggle_console_scrollbar, 1, "Show Console Scrollbar","If enabled, a scrollbar will be shown in the console window.",HUD);
 #if !defined(WINDOWS) && !defined(OSX)
 	add_var(OPT_BOOL,"use_clipboard","uclb",&use_clipboard, change_var, 1, "Use Clipboard For Pasting", "Use CLIPBOARD for pasting (as e.g. GNOME does) or use PRIMARY cutbuffer (as xterm does)",HUD);
@@ -1914,6 +1959,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"highlight_tab_on_nick", "highlight", &highlight_tab_on_nick, change_var, 1, "Highlight Tabs On Name", "Should tabs be highlighted when someone mentions your name?", CHAT);
 	add_var(OPT_BOOL,"emote_filter", "emote_filter", &emote_filter, change_var, 1, "Emotes filter", "Do not display lines of text in local chat containing emotes only", CHAT);
 	add_var(OPT_BOOL,"summoning_filter", "summ_filter", &summoning_filter, change_var, 0, "Summoning filter", "Do not display lines of text in local chat containing summoning messages", CHAT);
+	add_var(OPT_BOOL,"mixed_message_filter", "mixedmessagefilter", &mixed_message_filter, change_var, 0, "Mixed item filter", "Do not display console messages for mixed items when other windows are closed", CHAT);
 	add_var(OPT_INT,"time_warning_hour","warn_h",&time_warn_h,change_int,-1,"Time warning for new hour","If set to -1, there will be no warning given. Otherwise, you will get a notification in console this many minutes before the new hour",CHAT, -1, 30);
 	add_var(OPT_INT,"time_warning_sun","warn_s",&time_warn_s,change_int,-1,"Time warning for dawn/dusk","If set to -1, there will be no warning given. Otherwise, you will get a notification in console this many minutes before sunrise/sunset",CHAT, -1, 30);
 	add_var(OPT_INT,"time_warning_day","warn_d",&time_warn_d,change_int,-1,"Time warning for new #day","If set to -1, there will be no warning given. Otherwise, you will get a notification in console this many minutes before the new day",CHAT, -1, 30);
@@ -1929,6 +1975,7 @@ static void init_ELC_vars(void)
 	/* add_var(OPT_STRING,"text_filter_replace","trepl",text_filter_replace,change_string,127,"Text Filter","The word to replace bad text with",CHAT); */
 	add_var(OPT_BOOL,"caps_filter","caps",&caps_filter,change_var,1,"Caps Filter","Toggle the caps filter",CHAT);
 	add_var(OPT_BOOL,"show_timestamp","timestamp",&show_timestamp,change_var,0,"Show Time Stamps","Toggle time stamps for chat messages",CHAT);
+	add_var(OPT_MULTI_H,"dark_channeltext","dark_channeltext",&dark_channeltext,change_dark_channeltext,0,"Channel Text Color","Display the channel text in a darker color for better reading on bright maps ('Dark' may be unreadable in F1 screen)",CHAT, "Normal", "Medium", "Dark", NULL);
 	// CHAT TAB
 
 
@@ -2033,6 +2080,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"clouds_shadows","cshad",&clouds_shadows,change_clouds_shadows,1,"Cloud Shadows","The clouds shadows are projected on the ground, and the game looks nicer with them on.",GFX);
 	add_var(OPT_BOOL,"show_reflection","refl",&show_reflection,change_reflection,1,"Show Reflections","Toggle the reflections",GFX);
 	add_var(OPT_BOOL,"render_fog","fog",&use_fog,change_var,1,"Render Fog","Toggles fog rendering.",GFX);
+	add_var(OPT_BOOL,"show_weather","weather",&show_weather,change_var,1,"Show Weather Effects","Toggles thunder, lightning and rain effects.",GFX);
 	add_var(OPT_BOOL,"skybox_show_sky","sky", &skybox_show_sky, change_sky_var,1,"Show Sky", "Enable the sky box.", GFX);
 /* 	add_var(OPT_BOOL,"reflect_sky","reflect_sky", &reflect_sky, change_var,1,"Reflect Sky", "Sky Performance Option. Disable these from top to bottom until you're happy", GFX); */
 	add_var(OPT_BOOL,"skybox_show_clouds","sky_clouds", &skybox_show_clouds, change_sky_var,1,"Show Clouds", "Sky Performance Option. Disable these from top to bottom until you're happy", GFX);
@@ -2125,9 +2173,7 @@ static void init_ELC_vars(void)
 	add_var(OPT_BOOL,"render_bones_id","rbid",&render_bones_id,change_var,0,"Render bones ID", "Render the bones ID", DEBUGTAB);
 	add_var(OPT_BOOL,"render_bones_orientation","rbor",&render_bones_orientation,change_var,0,"Render bones orientation", "Render the bones orientation", DEBUGTAB);
 	add_var(OPT_FLOAT,"near_plane", "near_plane", &near_plane, change_projection_float, 0.1, "Minimum Viewing Distance", "Adjusts how near you can see.", DEBUGTAB, 0.1, 10.0, 0.1);
-#if defined(NEW_WEATHER)
 	add_var(OPT_BOOL,"skybox_local_weather","skybox_local_weather", &skybox_local_weather, change_var,0,"Local Weather", "Show local weather areas on the sky. It allows to see distant weather but can reduce performance.", DEBUGTAB);
-#endif // NEW_WEATHER
 #endif // DEBUG
 	// DEBUGTAB TAB
 
@@ -2244,12 +2290,9 @@ int write_el_ini ()
 #endif // !WINDOWS
 	int nlines= 0, maxlines= 0, iline, ivar;
 	input_line *cont= NULL;
-	input_line last_line;
+	const char *last_line;
 	FILE *file;
-	short *written = NULL;
-
-	// Prevent duplicate entries by remembering which we have written
-	written = calloc(our_vars.no, sizeof(short));
+	short *written;
 
 	// first check if we need to change anything
 	//
@@ -2293,17 +2336,21 @@ int write_el_ini ()
 				cont= realloc (cont, maxlines * sizeof (input_line));
 			}
 		}
-		fclose (file);
+		fclose(file);
 	}
 
 	// Now write the contents of the file, updating those variables that have been changed
 	file = open_file_config("el.ini", "w");
 	if(file == NULL){
 		LOG_ERROR("%s: %s \"el.ini\": %s\n", reg_error_str, cant_open_file, strerror(errno));
+		free(cont);
 		return 0;
 	}
 
-	strcpy(last_line, "");
+	// Prevent duplicate entries by remembering which we have written
+	written = calloc(our_vars.no, sizeof(short));
+
+	last_line = "";
 	for (iline= 0; iline < nlines; iline++)
 	{
 		if (cont[iline][0] != '#')
@@ -2323,7 +2370,7 @@ int write_el_ini ()
 			if (ivar >= 0)
 				written[ivar] = 1;
 		}
-		strcpy(last_line, cont[iline]);
+		last_line = cont[iline];
 	}
 
 	// now write all variables that still haven't been saved yet
@@ -2503,6 +2550,10 @@ int onclick_checkbox_handler(widget_list *widget, int mx, int my, Uint32 flags)
 			break;
 		}
 	}
+
+	if (!option)
+		// shouldn't happen
+		return 0;
 
 	if (option->type == OPT_BOOL)
 	{

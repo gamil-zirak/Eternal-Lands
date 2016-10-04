@@ -46,7 +46,6 @@ int idle_cycles_this_second = 0;
 
 const float MAX_EFFECT_DISTANCE = 16.0;
 const float MAX_OBSTRUCT_DISTANCE_SQUARED = MAX_EFFECT_DISTANCE * MAX_EFFECT_DISTANCE;
-const float OBSTRUCTION_FORCE = 2.0;
 const float WALK_RATE = 1.0;
 const float SWORD_HILT_LENGTH = 0.1;
 const float SWORD_BLADE_LENGTH = 0.5;
@@ -92,8 +91,6 @@ extern "C" void ec_init()
 #ifndef	NEW_TEXTURES
 	ec_set_draw_method();
 #endif	/* NEW_TEXTURES */
-	//TODO: Free this when the program quits.  Not a big deal if it doesn't
-	//happen, but it'd be proper to do so.
 	self_actor.obstruction = new ec::CappedSimpleCylinderObstruction(&(self_actor.center), 0.45, 3.0, self_actor.center.y, self_actor.center.y + 0.9);
 
 #ifdef MAP_EDITOR
@@ -647,6 +644,20 @@ extern "C" void ec_recall_effect(const ec_reference ref)
 		}
 	}
 }
+
+extern "C" void ec_destroy_all_effects()
+{
+	// loop marking all active effects as done, cleaning up the dead till we're done
+	for (int i=0; !references.empty() && i<50; ++i)
+	{
+		ec_delete_all_effects();
+		ec_idle();
+	}
+	if (!references.empty()) // unlikely to happen but just so we don't get stick on exit.
+		LOG_ERROR("%s: failed to clear up. references.size()=%lu", __PRETTY_FUNCTION__, references.size());
+	delete self_actor.obstruction;
+}
+
 
 extern "C" void ec_delete_all_effects()
 {

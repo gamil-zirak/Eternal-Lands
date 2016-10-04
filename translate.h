@@ -205,8 +205,10 @@ extern char 	tt_walk[30],
 		newchar_cred_help[100],
 		newchar_done_help[100],
 		tt_name[60],
-		tt_info[30];
-extern char	tt_emotewin[30];
+		tt_info[30],
+		tt_emotewin[30],
+		tt_rangewin[30],
+		tt_minimap[30];
 
 
 #endif  //DOXYGEN_SKIP_THIS
@@ -243,7 +245,12 @@ extern char
 		buddy_request_str[10],
 		/* chat.c */
 		channel_help_str[200],
+		channel_color_title_str[30],
+		channel_color_str[40],
+		channel_color_add_str[20],
+		channel_color_delete_str[20],
 		/*console.c*/
+		local_save_str[80],
 		logconn_str[50],
 		time_warn_hour_str[75],
 		time_warn_sunrise_str[100],
@@ -278,6 +285,8 @@ extern char
 		cmd_open_url[20],
 		cmd_show_spell[20],
 		cmd_cast_spell[20],
+		cmd_reload_icons[20],
+		cmd_session_counters[20],
 		help_cmd_markpos_str[50],
 		location_info_str[40],
 		knowledge_cmd_str[40],
@@ -293,6 +302,8 @@ extern char
 		urlwin_clear_str[30],
 		/*draw_scene.c*/
 		low_framerate_str[100],
+		/* encyclopedia */
+		encycl_search_prompt_str[25],
 		/*filter.c*/
 		no_filters_str[50],
 		filters_str[50],
@@ -306,6 +317,16 @@ extern char
 		stats_scroll_help_str[100],
 		remove_bar_message_str[50],
 		cm_action_points_str[30],
+		hud_timer_cm_str[100],
+		hud_timer_popup_title_str[25],
+		/* hud_indicators.cpp */
+		no_indicators_str[20],
+		cm_indicators_str[85],
+		day_indicator_str[60],
+		harvest_indicator_str[60],
+		poison_indicator_str[60],
+		messages_indicator_str[60],
+		ranginglock_indicator_str[70],
 		/*ignore.c*/
 		no_ignores_str[50],
 		ignores_str[50],
@@ -326,7 +347,7 @@ extern char
 		quantity_edit_str[100],
 		equip_here_str[100],
 		equip_str[20],
-		pick_item_help_str[50],
+		mod_click_item_help_str[50],
 		multiuse_item_help_str[50],
 		stoall_help_str[50],
 		getall_help_str[50],
@@ -351,6 +372,8 @@ extern char
 		researching_str[30],
 		not_researching_anything[25],
 		not_researching_str[25],
+		countdown_str[20],
+		stopwatch_str[20],
 		minutes_str[15],
 		minute_str[15],
 		idle_str[15],
@@ -372,11 +395,14 @@ extern char
 		/*multiplayer.c*/
 		connect_to_server_str[50],
 		reconnect_str[50],
+		test_server_connect_str[40],
+		server_connect_test_failed_str[40],
 		alt_x_quit[50],
 		license_check[150], 
 		/*new_character.c*/
 		skin_str[15],
 		hair_str[15],
+		eyes_str[15],
 		shirt_str[15],
 		pants_str[15],
 		boots_str[15],
@@ -439,6 +465,9 @@ extern char
 		ranging_success_rate_str[40],
 		ranging_critical_rate_str[40],
 		ranging_exp_per_arrow_str[40],
+		/* storage */
+		storage_filter_prompt_str[15],
+		storage_filter_help_str[40],
 		/* session.c */
 		session_reset_help[60],
 		/*trade.c*/
@@ -457,26 +486,27 @@ extern char
 		cm_quickspell_menu_str[50],
 		cm_textedit_menu_str[100],
 		cm_quickbar_menu_str[150],
-		cm_hud_menu_str[250],
+		cm_hud_menu_str[270],
 		cm_banner_menu_str[240],
 		cm_title_menu_str[150],
 		cm_title_help_str[50],
 		cm_items_menu_str[150],
-		cm_storage_menu_str[75],
+		cm_storage_menu_str[90],
 		cm_astro_menu_str[80],
 		cm_ranging_menu_str[50],
 		cm_dialog_options_str[80],
 		cm_dialog_menu_str[60],
 		cm_url_menu_str[150],
-		cm_counters_menu_str[90],
+		cm_counters_menu_str[160],
 		cm_help_options_str[50],
-		cm_npcname_menu_str[50],
+		cm_npcname_menu_str[60],
 		cm_dialog_copy_menu_str[50],
 		cm_minimap_menu_str[60],
 		cm_user_menu_str[150],
 		cm_stats_bar_base_str[30],
 		cm_recipe_menu_str[100],
 		cm_manuwin_menu_str[50],
+		cm_encycl_base_str[150],
 		/* user_menus.cpp */
 		um_invalid_command_str[50],
 		um_invalid_line_str[50],
@@ -538,6 +568,7 @@ extern char	reg_error_str[15],
 		/* books.c*/
 		book_open_err_str[30],
 		/*cache.c*/
+		cache_items_str[20],
 		cache_size_str[20],
 		/* cal.c */
 		no_animation_err_str[30],
@@ -663,6 +694,7 @@ extern char	reg_error_str[15],
 		init_display_str[35],
 		prep_op_win_str[35],
 		/* interface;c */
+		err_mapmarks_str[60],
 		err_nomap_str[60],
 		/* map_io.c */
 		load_map_str[35],
@@ -773,6 +805,8 @@ extern char	reg_error_str[15],
 		exceed_note_buffer[100],
 		user_no_more_notes[100],
 		user_no_more_note_tabs[100],
+		fatal_data_error[120],
+		cant_load_encycl[70],
 		warn_currently_ignoring[50],
 		dc_note_remove[50],
 		note_saved[50],
@@ -836,6 +870,7 @@ extern char	win_notepad[20],
 		button_remove_category[30],
 		button_save_notes[30],
 		game_version_str[60],
+		game_version_prefix_str[60],
 		label_note_name[20],
 		label_cursor_coords[17],
 		label_mark_filter[13],
@@ -885,6 +920,26 @@ void load_translatables();
  * \callgraph
  */
 void add_options_distringid(char * xml_id, dichar * var, char * str, char * desc);
+
+
+/*!
+ * \ingroup	translation
+ *
+ *          Retrieve a translated string by its name.
+ *
+ * \callgraph
+ */
+const char* get_named_string(const char* group_name, const char* string_name);
+
+
+/*!
+ * \ingroup	translation
+ *
+ *          Free allocated memory.
+ *
+ * \callgraph
+ */
+ void free_translations(void);
 
 #ifdef __cplusplus
 } // extern "C"

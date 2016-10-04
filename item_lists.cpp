@@ -39,6 +39,7 @@
 #include "init.h"
 #include "io/elpathwrapper.h"
 #include "items.h"
+#include "item_info.h"
 #include "item_lists.h"
 #include "questlog.h"
 #include "sound.h"
@@ -106,21 +107,25 @@ namespace ItemLists
 	class List_Container
 	{
 		public:
-			List_Container(void) : active_list(0), last_mod_time(0), loaded(false) {}
+			List_Container(void) : active_list(0), initial_active_list(0), last_mod_time(0), loaded(false) {}
 			void load(void);
 			void save(void);
 			bool add(const char *name);
 			void del(size_t list_index);
+			const std::string & get_active_name(void) const
+				{ static const std::string empty(""); return (valid_active_list()) ?saved_item_lists[active_list].get_name() :empty; }
 			void rename_active(const char * name);
 			void select_by_name(const char *name);
 			void find_next_matching(const char *filter);
 			size_t get_active(void) const { return active_list; }
 			size_t size(void) const { return saved_item_lists.size(); }
 			bool valid_active_list(void) const { return active_list < size(); }
-			void change_active(int change);
+			void active_next_list(void) { if (active_list + 1 < size()) active_list++; }
+			void active_previous_list(void) { if (active_list > 0) active_list--; }
 			const std::vector<List> & get_lists(void) const { return saved_item_lists; }
 			bool set_active(size_t new_active_list)
 				{ if (new_active_list >= size()) return false; active_list = new_active_list; return true; }
+			void set_initial_active(size_t list_index) { initial_active_list = list_index; }
 			void set_quantity(size_t item, int quantity)
 				{ assert(valid_active_list()); last_mod_time = SDL_GetTicks(); return saved_item_lists[active_list].set_quantity(item, quantity); }
 			void del_item(size_t i)
@@ -136,6 +141,7 @@ namespace ItemLists
 			std::vector<List> saved_item_lists;
 			static int FILE_REVISION;
 			size_t active_list;
+			size_t initial_active_list;
 			Uint32 last_mod_time;
 			bool loaded;
 			static const char * filename;
@@ -195,9 +201,10 @@ namespace ItemLists
 				num_show_names_list(6), names_list_height(SMALL_FONT_Y_LEN),
 				win_id(-1), selected_item_number(static_cast<size_t>(-1)),
 				name_under_mouse(static_cast<size_t>(-1)), clicked(false),
-				mouse_over_add_button(false), last_click_time(0), resizing(false),
+				mouse_over_add_button(false), resizing(false),
 				last_quantity_selected(0), num_grid_rows(min_grid_rows()),
-				last_key_time(0), last_items_list_on_left(-1) {}
+				last_key_time(0), last_items_list_on_left(-1), desc_str(0),
+				pickup_fail_time(0) {}
 			int get_id(void) const { return win_id; }
 			size_t get_grid_cm(void) const { return cm_selected_item_menu; }
 			static int get_grid_size(void) { return 33; };
@@ -216,6 +223,7 @@ namespace ItemLists
 			void cm_names_pre_show(void);
 			int keypress(char the_key);
 			void resized_name_panel(window_info *win);
+			void reset_pickup_fail_time(void) { pickup_fail_time = SDL_GetTicks(); }
 		private:
 			void calc_num_show_names(int win_len_y);
 			int get_window_pos_x(window_info *parent_win) const;
@@ -234,7 +242,6 @@ namespace ItemLists
 			bool mouse_over_add_button;
 			int add_button_x;
 			int add_button_y;
-			Uint32 last_click_time;
 			bool resizing;
 			int last_quantity_selected;
 			INPUT_POPUP ipu_item_list_name;
@@ -244,6 +251,8 @@ namespace ItemLists
 			char filter[20];
 			Uint32 last_key_time;
 			int last_items_list_on_left;
+			const char *desc_str;
+			Uint32 pickup_fail_time;
 	};
 
 
@@ -632,7 +641,7 @@ namespace ItemLists
 	//
 	void List_Container::save(void)
 	{
-		if (!loaded)
+		if (!loaded || saved_item_lists.empty())
 			return;
 		std::string fullpath = get_path_config() + std::string(filename);
 		std::ofstream out(fullpath.c_str());
@@ -668,6 +677,7 @@ namespace ItemLists
 		if (revision != FILE_REVISION)
 		{
 			LOG_ERROR("%s: %s [%s]\n", __FILE__, item_list_version_error_str, fullpath.c_str() );
+			LOG_TO_CONSOLE(c_red2, item_list_version_error_str);
 			return;
 		}
 		bool logged_error = false;
@@ -686,7 +696,7 @@ namespace ItemLists
 		}
 		in.close();
 		sort_list();
-		active_list = 0;
+		set_active(initial_active_list);
 	}
 
 
@@ -760,15 +770,6 @@ namespace ItemLists
 		sort_list();
 		select_by_name(name);
 		save();
-	}
-
-
-	//	Change the current active list by mouse wheel
-	//
-	void List_Container::change_active(int change)
-	{
-		if (((active_list + change) >= 0) && ((active_list + change) < size()))
-			active_list += change;
 	}
 
 
@@ -860,6 +861,8 @@ namespace ItemLists
 				1.0, 0.77f, 0.57f, 0.39f, 0, 1, Vars::lists()->size()-num_show_names_list);
 
 			init_ipu(&ipu_item_list_name, -1, -1, -1, 1, 1, NULL, NULL);
+			
+			make_active_visable();
 		}
 		else
 		{
@@ -923,6 +926,12 @@ namespace ItemLists
 
 		size_t help_lines_shown = 0;
 
+		if (desc_str)
+		{
+			show_help(desc_str, 0, static_cast<int>(0.5 + win->len_y + 10 + SMALL_FONT_Y_LEN * help_lines_shown++));
+			desc_str = 0;
+		}
+
 		// Display any name search text
 		if (strlen(filter))
 		{
@@ -958,7 +967,7 @@ namespace ItemLists
 		{
 			int x_start = selected_item_number%6 * get_grid_size();
 			int y_start = static_cast<int>(selected_item_number/6) * get_grid_size();
-			if ((SDL_GetTicks() - il_pickup_fail_time) < 250)
+			if ((SDL_GetTicks() - pickup_fail_time) < 250)
 				glColor3f(0.8f,0.2f,0.2f);
 			else
 				glColor3f(0.0f, 1.0f, 0.3f);
@@ -1049,10 +1058,12 @@ CHECK_GL_ERRORS();
 			return;
 		window_info *win = &windows_list.window[win_id];
 		close_ipu(&ipu_item_list_name);
-		init_ipu(&ipu_item_list_name, win_id, 310, 100, 25, 1, NULL, (is_new) ?new_list_handler :rename_list_handler);
+		init_ipu(&ipu_item_list_name, win_id, -1, -1, 41, 1, NULL, (is_new) ?new_list_handler :rename_list_handler);
 		ipu_item_list_name.x = (win->len_x - ipu_item_list_name.popup_x_len) / 2;
 		ipu_item_list_name.y = (get_grid_size()*num_grid_rows - ipu_item_list_name.popup_y_len) / 2;
 		display_popup_win(&ipu_item_list_name, (is_new) ?item_list_name_str : item_list_rename_str );
+		if (!is_new && Vars::lists()->valid_active_list())
+			set_text_message_data(&ipu_item_list_name.popup_text, Vars::lists()->get_active_name().c_str());
 	}
 
 
@@ -1069,6 +1080,10 @@ CHECK_GL_ERRORS();
 			size_t item_number = get_item_number(mx, my);
 			if (item_number < Vars::lists()->get_list().get_num_items())
 			{
+				Uint16 item_id = Vars::lists()->get_list().get_item_id(item_number);
+				int image_id = Vars::lists()->get_list().get_image_id(item_number);
+				if (show_item_desc_text && item_info_available() && (get_item_count(item_id, image_id) == 1))
+					desc_str = get_item_description(item_id, image_id);
 				help_str.push_back(item_list_pickup_help_str);
 				help_str.push_back(item_list_use_help_str);
 				help_str.push_back(item_list_edit_help_str);
@@ -1167,9 +1182,9 @@ CHECK_GL_ERRORS();
 			if (my<get_grid_size()*num_grid_rows)
 			{
 				if (flags & ELW_WHEEL_UP)
-					Vars::lists()->change_active(-1);
+					Vars::lists()->active_previous_list();
 				else if (flags & ELW_WHEEL_DOWN)
-					Vars::lists()->change_active(1);
+					Vars::lists()->active_next_list();
 				make_active_visable();
 			}
 			// scroll the names
@@ -1212,7 +1227,7 @@ CHECK_GL_ERRORS();
 					else
 					{
 						do_alert1_sound();
-						il_pickup_fail_time = SDL_GetTicks();
+						reset_pickup_fail_time();
 						static bool first_fail = true;
 						if (first_fail)
 						{
@@ -1247,11 +1262,11 @@ CHECK_GL_ERRORS();
 	//
 	void List_Window::make_active_visable(void)
 	{
-		const size_t top_entry = vscrollbar_get_pos (win_id, names_scroll_id);
-		int new_pos = top_entry;
-		if (Vars::lists()->get_active()<top_entry)
+		const size_t top_entry = vscrollbar_get_pos(win_id, names_scroll_id);
+		int new_pos;
+		if (Vars::lists()->get_active() < top_entry)
 			new_pos = Vars::lists()->get_active();
-		else if (Vars::lists()->get_active()>=(top_entry+num_show_names_list))
+		else if (Vars::lists()->get_active() >= (top_entry+num_show_names_list))
 			new_pos = Vars::lists()->get_active() - (num_show_names_list - 1);
 		else
 			return;
@@ -1485,8 +1500,6 @@ CHECK_GL_ERRORS();
 //
 extern "C"
 {
-	Uint32 il_pickup_fail_time = 0;
-
 	void toggle_items_list_window(window_info *win)
 		{ ItemLists::Vars::win()->show(win); }
 
@@ -1498,4 +1511,20 @@ extern "C"
 		ItemLists::Vars::lists()->save();
 		ItemLists::Vars::cat_maps()->save();
 	}
+	
+	unsigned int item_lists_get_active(void)
+	{
+		return static_cast<unsigned int>(ItemLists::Vars::lists()->get_active());
+	}
+	
+	void item_lists_set_active(unsigned int active_list)
+	{
+		ItemLists::Vars::lists()->set_initial_active(static_cast<size_t>(active_list));
+	}
+	
+	void item_lists_reset_pickup_fail_time(void)
+	{
+		ItemLists::Vars::win()->reset_pickup_fail_time();
+	}
+
 }

@@ -647,6 +647,9 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 	Uint32 actor_type;
 	Uint8 skin;
 	Uint8 hair;
+#ifdef NEW_EYES
+	Uint8 eyes;
+#endif
 	Uint8 shirt;
 	Uint8 pants;
 	Uint8 boots;
@@ -724,11 +727,17 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 		if(len > 28+(int)strlen(in_data+28)+3)
 			attachment_type = (unsigned char)in_data[28+strlen(in_data+28)+3];
 	}
-	//the last byte of the packet even if scale+attachment is not sent
-	neck=*(in_data+len-1);
-
-	
 #endif
+	//the last bytes of the packet even if scale+attachment is not sent
+#ifdef NEW_EYES
+	if((*(in_data+len-2) > EYES_GOLD)|| (*(in_data+len-2) < 0))
+	{
+		eyes=0;
+	} else {
+		eyes=*(in_data+len-2);
+	}
+#endif
+	neck=*(in_data+len-1);
 
 	//translate from tile to world
 	f_x_pos=x_pos*0.5;
@@ -930,6 +939,24 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 	my_strncp(this_actor->boots_base,actors_defs[actor_type].skin[skin].feet_name,sizeof(this_actor->boots_base));
 	//hair
 	my_strncp(this_actor->hair_tex,actors_defs[actor_type].hair[hair].hair_name,sizeof(this_actor->hair_tex));
+#ifdef NEW_EYES
+	//eyes
+	if (actors_defs[actor_type].eyes && actors_defs[actor_type].eyes[eyes].eyes_name)
+	{
+		my_strncp(this_actor->eyes_tex,actors_defs[actor_type].eyes[eyes].eyes_name,sizeof(this_actor->eyes_tex));
+	}
+	else
+	{
+		static int already_said = 0;
+		if (!already_said)
+		{
+			char *message = "Looks like we compiled with NEW_EYES but do not have the textures";
+			LOG_ERROR(message);
+			LOG_TO_CONSOLE(c_red2,message);
+			already_said = 1;
+		}
+	}
+#endif
 	//boots
 	my_strncp(this_actor->boots_tex,actors_defs[actor_type].boots[boots].boots_name,sizeof(this_actor->boots_tex));
 	my_strncp(this_actor->boots_mask,actors_defs[actor_type].boots[boots].boots_mask,sizeof(this_actor->boots_mask));
@@ -938,26 +965,33 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 	my_strncp(this_actor->pants_mask,actors_defs[actor_type].legs[pants].legs_mask,sizeof(this_actor->pants_mask));
 
 #ifdef CUSTOM_LOOK
-	//torso
-	custom_path(this_actor->arms_tex, playerpath, guildpath);
-	custom_path(this_actor->torso_tex, playerpath, guildpath);
-	custom_path(this_actor->arms_mask, playerpath, guildpath);
-	custom_path(this_actor->torso_mask, playerpath, guildpath);
-	//skin
-	custom_path(this_actor->hands_tex, playerpath, guildpath);
-	custom_path(this_actor->hands_tex_save, playerpath, guildpath);
-	custom_path(this_actor->head_tex, playerpath, guildpath);
-	custom_path(this_actor->body_base, playerpath, guildpath);
-	custom_path(this_actor->arms_base, playerpath, guildpath);
-	custom_path(this_actor->legs_base, playerpath, guildpath);
-	//hair
-	custom_path(this_actor->hair_tex, playerpath, guildpath);
-	//boots
-	custom_path(this_actor->boots_tex, playerpath, guildpath);
-	custom_path(this_actor->boots_mask, playerpath, guildpath);
-	//legs
-	custom_path(this_actor->pants_tex, playerpath, guildpath);
-	custom_path(this_actor->pants_mask, playerpath, guildpath);
+	if(kind_of_actor != NPC)
+	{
+		//torso
+		custom_path(this_actor->arms_tex, playerpath, guildpath);
+		custom_path(this_actor->torso_tex, playerpath, guildpath);
+		custom_path(this_actor->arms_mask, playerpath, guildpath);
+		custom_path(this_actor->torso_mask, playerpath, guildpath);
+		//skin
+		custom_path(this_actor->hands_tex, playerpath, guildpath);
+		custom_path(this_actor->hands_tex_save, playerpath, guildpath);
+		custom_path(this_actor->head_tex, playerpath, guildpath);
+		custom_path(this_actor->body_base, playerpath, guildpath);
+		custom_path(this_actor->arms_base, playerpath, guildpath);
+		custom_path(this_actor->legs_base, playerpath, guildpath);
+		//hair
+		custom_path(this_actor->hair_tex, playerpath, guildpath);
+#ifdef NEW_EYES
+		//eyes
+		custom_path(this_actor->eyes_tex, playerpath, guildpath);
+#endif
+		//boots
+		custom_path(this_actor->boots_tex, playerpath, guildpath);
+		custom_path(this_actor->boots_mask, playerpath, guildpath);
+		//legs
+		custom_path(this_actor->pants_tex, playerpath, guildpath);
+		custom_path(this_actor->pants_mask, playerpath, guildpath);
+	}
 #endif //CUSTOM_LOOK
 
 	//cape
@@ -965,7 +999,8 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 		{
 			my_strncp(this_actor->cape_tex,actors_defs[actor_type].cape[cape].skin_name,sizeof(this_actor->cape_tex));
 #ifdef CUSTOM_LOOK
-			custom_path(this_actor->cape_tex, playerpath, guildpath);
+			if(kind_of_actor != NPC)
+				custom_path(this_actor->cape_tex, playerpath, guildpath);
 #endif //CUSTOM_LOOK
 		}
 	else
@@ -977,7 +1012,8 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 		{
 			my_strncp(this_actor->shield_tex,actors_defs[actor_type].shield[shield].skin_name,sizeof(this_actor->shield_tex));
 #ifdef CUSTOM_LOOK
-			custom_path(this_actor->shield_tex, playerpath, guildpath);
+			if(kind_of_actor != NPC)
+				custom_path(this_actor->shield_tex, playerpath, guildpath);
 #endif //CUSTOM_LOOK
 		}
 	else
@@ -989,14 +1025,16 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 	{
 		my_strncp(this_actor->hands_tex, actors_defs[actor_type].weapon[weapon].skin_name,sizeof(this_actor->hands_tex));
 #ifdef CUSTOM_LOOK
-		custom_path(this_actor->hands_tex, playerpath, guildpath);
+		if(kind_of_actor != NPC)
+			custom_path(this_actor->hands_tex, playerpath, guildpath);
 #endif //CUSTOM_LOOK
 	}
 	else
 	{
 		my_strncp(this_actor->weapon_tex,actors_defs[actor_type].weapon[weapon].skin_name,sizeof(this_actor->weapon_tex));
 #ifdef CUSTOM_LOOK
-		custom_path(this_actor->weapon_tex, playerpath, guildpath);
+		if(kind_of_actor != NPC)
+			custom_path(this_actor->weapon_tex, playerpath, guildpath);
 #endif //CUSTOM_LOOK
 	}
 
@@ -1008,7 +1046,8 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 			my_strncp(this_actor->helmet_tex,actors_defs[actor_type].helmet[helmet].skin_name,sizeof(this_actor->helmet_tex));
 
 #ifdef CUSTOM_LOOK
-			custom_path(this_actor->helmet_tex, playerpath, guildpath);
+			if(kind_of_actor != NPC)
+				custom_path(this_actor->helmet_tex, playerpath, guildpath);
 #endif //CUSTOM_LOOK
 		}
 	else
@@ -1022,7 +1061,8 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 			assert(!"Using old client data" || actors_defs[actor_type].neck != NULL);
 			my_strncp(this_actor->neck_tex,actors_defs[actor_type].neck[neck].skin_name,sizeof(this_actor->neck_tex));
 #ifdef CUSTOM_LOOK
-			custom_path(this_actor->neck_tex, playerpath, guildpath);
+			if(kind_of_actor != NPC)
+				custom_path(this_actor->neck_tex, playerpath, guildpath);
 #endif //CUSTOM_LOOK
 		}
 	else
@@ -1064,24 +1104,29 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
     actors_list[i]->z_pos = get_actor_z(actors_list[i]);
 	if(frame==frame_sit_idle||(pose!=NULL&&pose->pose==EMOTE_SITTING)){ //sitting pose sent by the server
 			actors_list[i]->poses[EMOTE_SITTING]=pose;
-			if(actors_list[i]->actor_id==yourself)you_sit_down();
+			if(actors_list[i]->actor_id==yourself)
+				you_sit=1;
 			actors_list[i]->sitting=1;
 		}
 	else if(frame==frame_stand||(pose!=NULL&&pose->pose==EMOTE_STANDING)){//standing pose sent by server
 			actors_list[i]->poses[EMOTE_STANDING]=pose;
-			if(actors_list[i]->actor_id==yourself)you_stand_up();
+			if(actors_list[i]->actor_id==yourself)
+				you_sit=0;
 		}
 	else if(frame==frame_walk||(pose!=NULL&&pose->pose==EMOTE_WALKING)){//walking pose sent by server
 			actors_list[i]->poses[EMOTE_WALKING]=pose;
-			if(actors_list[i]->actor_id==yourself)you_stand_up();
+			if(actors_list[i]->actor_id==yourself)
+				you_sit=0;
 		}
 	else if(frame==frame_run||(pose!=NULL&&pose->pose==EMOTE_RUNNING)){//running pose sent by server
 			actors_list[i]->poses[EMOTE_RUNNING]=pose;
-			if(actors_list[i]->actor_id==yourself)you_stand_up();
+			if(actors_list[i]->actor_id==yourself)
+				you_sit=0;
 		}
 	else
 		{
-			if(actors_list[i]->actor_id==yourself)you_stand_up();
+			if(actors_list[i]->actor_id==yourself)
+				you_sit=0;
 			if(frame==frame_combat_idle)
 				actors_list[i]->fighting=1;
 			else if (frame == frame_ranged)
@@ -1263,7 +1308,7 @@ void add_enhanced_actor_from_server (const char *in_data, int len)
 #endif
 }
 
-actor * add_actor_interface(float x, float y, float z_rot, float scale, int actor_type, short skin, short hair,
+actor * add_actor_interface(float x, float y, float z_rot, float scale, int actor_type, short skin, short hair, short eyes,
 				short shirt, short pants, short boots, short head)
 {
 	enhanced_actor * this_actor=calloc(1,sizeof(enhanced_actor));
@@ -1277,6 +1322,9 @@ actor * add_actor_interface(float x, float y, float z_rot, float scale, int acto
 	my_strncp(this_actor->hands_tex,actors_defs[actor_type].skin[skin].hands_name,sizeof(this_actor->hands_tex));
 	my_strncp(this_actor->head_tex,actors_defs[actor_type].skin[skin].head_name,sizeof(this_actor->head_tex));
 	my_strncp(this_actor->hair_tex,actors_defs[actor_type].hair[hair].hair_name,sizeof(this_actor->hair_tex));
+#ifdef NEW_EYES
+	my_strncp(this_actor->eyes_tex,actors_defs[actor_type].eyes[eyes].eyes_name,sizeof(this_actor->eyes_tex));
+#endif
 	my_strncp(this_actor->boots_tex,actors_defs[actor_type].boots[boots].boots_name,sizeof(this_actor->boots_tex));
 	my_strncp(this_actor->boots_mask,actors_defs[actor_type].boots[boots].boots_mask,sizeof(this_actor->boots_mask));
 	my_strncp(this_actor->pants_tex,actors_defs[actor_type].legs[pants].legs_name,sizeof(this_actor->pants_tex));

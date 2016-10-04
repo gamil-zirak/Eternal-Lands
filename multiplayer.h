@@ -18,8 +18,6 @@ extern unsigned char server_address[60]; /*!< the server address we use */
 
 extern TCPsocket my_socket; /*!< our TCP socket to communiate with the server */
 
-extern int combat_mode; /*!< a flag that indicates whether our actor is currently in combat mode, aka fighting or not */
-
 /*! \name Version information 
  * @{ */
 extern char version_string[]; /*!< a buffer for the complete version string */
@@ -30,6 +28,7 @@ extern int client_version_patch; /*!< The clients Patchlevel number */
 extern int version_first_digit; /*!< the first digit of the version */
 extern int version_second_digit; /*!< the second digit of the version */
 extern int always_pathfinding; /*!< use pathfinding for walk click on far visible tiles of the 3d map */
+extern int mixed_message_filter; /*!< If true, do not display console messages for mixed items when other windows are closed */
 /*! @} */
 
 
@@ -37,8 +36,58 @@ extern Uint32 next_second_time; /*!< the time of the next second */
 extern short real_game_minute; /*!< the real game minute */
 extern short real_game_second; /*!< the real game second */
 
+/*!
+ * \brief	check validity of game seconds
+ *
+ * \retval	true if we have set seconds.
+*/
+int is_real_game_second_valid(void);
+
+/*!
+ * \brief	Set game seconds as valid.
+ * 
+*/
+void set_real_game_second_valid(void);
+
+/*!
+ * \brief	Get the current game time.
+ * 
+ * \retval	game time in seconds.
+*/
+Uint32 get_game_time_sec(void);
+
+/*!
+ * \brief	Get the time difference from current game time.
+ *
+ * \param	the relative time to compare
+ * 
+ * \retval	the time difference in seconds, wrapped appropriately
+*/
+Uint32 diff_game_time_sec(Uint32 ref_time);
+
+/*!
+ * \brief	Set the state to disconnected from the server, showing messages and recording time.
+ *
+ * \param	A message string, or NULL
+ * 
+*/
+void enter_disconnected_state(char *message);
+
+/*!
+ * \brief	Called from the main thread 500 ms timer, check if testing server connection.
+ *
+*/
+void check_if_testing_server_connection(void);
+
+/*!
+ * \brief	Initiates a test for server connection, the client will enter the disconnected state if needed.
+ *
+*/
+void start_testing_server_connection(void);
 
 extern time_t last_heart_beat; /*!< a timestamp that inidicates when the last message was sent to the server */
+
+extern time_t last_save_time; /*!< a timestamp inidicating the last #save */
 
 extern int log_conn_data; /*!< indicates whether we should log connection data or not */
 
@@ -56,10 +105,10 @@ void create_tcp_out_mutex();
 /*!
  * \ingroup network_actors
  *
- *      Destroys the mutex for the tcp output buffer.
+ *      Destroys the mutex for the tcp output buffer, the socket and the socket set
  *
  */
-void destroy_tcp_out_mutex();
+void cleanup_tcp();
 
 	/*!
  * \ingroup network_actors
@@ -129,6 +178,7 @@ void send_login_info();
  * \param pass_str          the password for the char
  * \param skin              the skin id used by the char
  * \param hair              the hair id used by the char
+ * \param eyes              the eyes id used by the char
  * \param shirt             the shirt id used by the char
  * \param pants             the pants id used by the char
  * \param boots             the boots id used by the char
@@ -141,7 +191,7 @@ void send_login_info();
  * \pre If the length of \a pass_str is less than 4, this function will create an error and returns.
  * \pre If the \a conf_pass_str doesn't match the \a pass_str, this function will create an error and returns.
  */
-void send_new_char(char * user_str, char * pass_str, char skin, char hair, char shirt, char pants, char boots,char head, char type);
+void send_new_char(char * user_str, char * pass_str, char skin, char hair, char eyes, char shirt, char pants, char boots,char head, char type);
 
 /*!
  * \ingroup network_actors

@@ -10,17 +10,6 @@
 #include "textures.h"
 #include "translate.h"
 
-/* NOTE: This file contains implementations of the following, currently unused, and commented functions:
- *          Look at the end of the file.
- *
- * void cache_system_shutdown();
- * void cache_clear_counter(cache_struct*);
- * void cache_set_size(cache_struct*, Uint32, void*);
- * void cache_use_item(cache_struct*, const void*);
- * void cache_remove_item(cache_struct*, cosnt Uint8*);
- * void cache_remove_unused(cache_struct*);
- */
-
 cache_struct *cache_system = NULL;
 cache_struct *cache_e3d = NULL;
 
@@ -91,8 +80,19 @@ void cache_dump_sizes(const cache_struct *cache)
 				size /= 1024;
 				scale = 'K';
 			}
-			safe_snprintf(str, sizeof(str), "%s %6d%c - %d: %s",
-				cache_size_str, size, scale, i, item->name);
+			if(cache==cache_system)
+			{
+				cache_struct *temp = item->cache_item;
+				safe_snprintf(str, sizeof(str), "%s %6d%c - %d: %s (%d %s)",
+#ifdef FASTER_MAP_LOAD
+					cache_size_str, size, scale, i, item->name, temp->num_items, cache_items_str);
+#else
+					cache_size_str, size, scale, i, item->name, temp->max_item, cache_items_str);
+#endif
+			}
+			else
+				safe_snprintf(str, sizeof(str), "%s %6d%c - %d: %s",
+					cache_size_str, size, scale, i, item->name);
 			put_colored_text_in_buffer(c_yellow1, CHAT_SERVER, (unsigned char*)str, -1);
 #ifdef MAP_EDITOR2
 			log_error(str);
@@ -562,9 +562,9 @@ static void cache_remove(cache_struct *cache, cache_item_struct *item)
 	item->name = NULL;		//failsafe
 	item->size = 0;			//failsafe
 #ifdef FASTER_MAP_LOAD
-	if (cache->num_items > 0)
+	if (cache->num_items >= 0)
 	{
-		cache_item_struct **ci = cache->cached_items + cache->num_items - 1;
+		cache_item_struct **ci = cache->cached_items + cache->num_items;
 		if (*ci == item)
 		{
 			free(*ci);
@@ -651,86 +651,3 @@ static void cache_remove_all(cache_struct *cache)
 #endif
 	cache->recent_item = NULL;	//forget where we are just incase
 }
-
-/* currently UNUSED
-void cache_remove_unused(cache_struct *cache)
-{
-	Sint32	i;
-
-	if(!cache->cached_items) return;
-	for(i=cache->max_item-1; i>=0; i--)
-		{
-			if(cache->cached_items[i] && cache->cached_items[i]->access_count == 0)
-				{
-					cache_remove(cache, cache->cached_items[i]);
-					cache->cached_items[i]=NULL;
-				}
-		}
-	cache->recent_item = NULL;	//forget where we are just incase
-}
-
-void cache_system_shutdown()
-{
-	cache_delete(cache_system);
-	cache_system=NULL;
-}
-
-void cache_clear_counter(cache_struct *cache)
-{
-	Sint32	i;
-
-	for(i=0; i<cache->max_item; i++)
-		{
-			if(cache->cached_items[i])
-				{
-					cache->cached_items[i]->access_count=0;
-				}
-		}
-}
-
-void cache_use_item(cache_struct *cache, const void *item_data)
-{
-	cache_item_struct *item_ptr=NULL;
-
-	if(!cache->cached_items) return;
-	item_ptr=cache_find_ptr(cache, item_data);
-	//if(item_ptr)
-	//	{
-	//		item_ptr->access_time=cur_time;
-	//		item_ptr->access_count++;
-	//	}
-}
-
-void cache_set_size(cache_struct *cache, Uint32 size, void *item)
-{
-	cache_item_struct *item_ptr;
-
-	item_ptr=cache_find_ptr(cache, item);
-	if(item_ptr)
-		{
-			// adjust from the old size to the new siae
-			if(item_ptr->size != size)
-				{
-					cache->total_size-=item_ptr->size;
-					cache->total_size+=size;
-					if(cache != cache_system)
-						{
-							cache_adj_size(cache_system, size-item_ptr->size, cache);
-						}
-				}
-			item_ptr->size=size;
-			cache_use(item_ptr);
-			//item_ptr->access_time=cur_time;
-			//item_ptr->access_count++;
-		}
-}
-
-void cache_remove_item(cache_struct *cache, const Uint8 *name)
-{
-	cache_item_struct *item;
-
-	if(!cache->cached_items) return;
-	item=cache_find(cache, name);
-	if(item) cache_remove(cache, item);
-}
-*/

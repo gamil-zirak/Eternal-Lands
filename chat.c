@@ -2,9 +2,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <errno.h>
 #include <libxml/parser.h>
 #include "chat.h"
 #include "asc.h"
+#include "colors.h"
 #include "console.h"
 #include "consolewin.h"
 #include "elconfig.h"
@@ -23,6 +25,7 @@
 #include "gl_init.h"
 #endif
 #include "io/elfilewrapper.h"
+#include "io/elpathwrapper.h"
 #include "sound.h"
 
 int chat_win = -1;
@@ -34,6 +37,7 @@ void remove_tab_button (Uint8 channel);
 int add_tab_button (Uint8 channel);
 void update_tab_button_idx (Uint8 old_idx, Uint8 new_idx);
 void convert_tabs (int new_wc);
+int display_channel_color_win(Uint32 channel_number);
 
 Uint32 active_channels[MAX_ACTIVE_CHANNELS];
 Uint8 current_channel = 0;
@@ -262,11 +266,12 @@ void init_chat_channels(void)
 	}
 }
 
-void clear_input_line (void)
+void clear_input_line(void)
 {
 	input_text_line.data[0] = '\0';
 	input_text_line.len = 0;
-	if(input_widget != NULL) {
+	if (input_widget != NULL)
+	{
 		text_field *field = input_widget->widget_info;
 		field->cursor = 0;
 		field->cursor_line = 0;
@@ -274,10 +279,9 @@ void clear_input_line (void)
 		if(use_windowed_chat != 2) {
 			widget_resize(input_widget->window_id, input_widget->id, input_widget->len_x, field->y_space*2+DEFAULT_FONT_Y_LEN*input_widget->size);
 		}
-	}
-	/* Hide the game win input widget */
-	if(input_widget->window_id == game_root_win) {
-		widget_set_flags(game_root_win, input_widget->id, INPUT_DEFAULT_FLAGS|WIDGET_DISABLED);
+		/* Hide the game win input widget */
+		if(input_widget->window_id == game_root_win)
+			widget_set_flags(game_root_win, input_widget->id, INPUT_DEFAULT_FLAGS|WIDGET_DISABLED);
 	}
 	history_reset();
 }
@@ -578,9 +582,10 @@ void switch_to_chat_tab(int id, char click)
 	text_changed = 1;
 	channels[active_tab].highlighted = 0;
 
-	if (channels[active_tab].chan_nr >= CHAT_CHANNEL1 && channels[active_tab].chan_nr <= CHAT_CHANNEL3)
+	if (channels[active_tab].chan_nr >= CHAT_CHANNEL1 && channels[active_tab].chan_nr <= CHAT_CHANNEL3) {
 		send_active_channel (channels[active_tab].chan_nr);
 		recolour_messages(display_text_buffer);
+	}
 }
 
 void change_to_current_chat_tab(const char *input)
@@ -652,11 +657,27 @@ int chat_tabs_click (widget_list *widget, int mx, int my, Uint32 flags)
 	int id;
 	
 	id = tab_collection_get_tab_id (chat_win, widget->id);
-	if (id != channels[active_tab].tab_id)
+
+	if (flags&ELW_RIGHT_MOUSE)
 	{
-		//We're not looking at the tab we clicked
-		switch_to_chat_tab(id, 1);
-		return 1;
+		int i;
+		for(i=0; i < MAX_CHAT_TABS; i++)
+		{
+			if(channels[i].tab_id == id)
+			{
+				display_channel_color_win(get_active_channel(channels[i].chan_nr));
+				return 1;
+			}
+		}
+	}
+	else
+	{
+		if (id != channels[active_tab].tab_id)
+		{
+			//We're not looking at the tab we clicked
+			switch_to_chat_tab(id, 1);
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -806,6 +827,28 @@ void parse_input(char *data, int len)
 	{
 		test_for_console_command ((char*)data, len);
 	}
+	else if (data[0] == '/' && len > 1)
+	{
+		// Forum #58898: Please the server when sending player messages;
+		// remove all but one space between name and message start.
+		// do not assume data is null terminated
+		size_t dx = 0;
+		char *rebuf = (char *)malloc(len+1);
+		for (dx=0; (dx < len) && (data[dx] != ' '); dx++)
+			rebuf[dx] = data[dx];
+		rebuf[dx] = '\0';
+		while ((dx < len) && (data[dx] == ' '))
+			dx++;
+		if (dx < len)
+		{
+			size_t rebuf_len = 0;
+			safe_strcat(rebuf, " ", len+1);
+			rebuf_len = strlen(rebuf);
+			safe_strncpy2(&rebuf[rebuf_len], &data[dx], len+1-rebuf_len, len-dx);
+		}
+		send_input_text_line (rebuf, strlen(rebuf));
+		free(rebuf);
+	}
 	else
 	{
 		if(data[0] == char_at_str[0])
@@ -877,6 +920,11 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 	{
 		do_tab_complete(&input_text_line);
 	}
+	else if (get_show_window(console_root_win))
+	{
+		if (!chat_input_key (input_widget, 0, 0, key, unikey))
+			return 0;
+	}
 	else
 	{
 		return 0;
@@ -941,7 +989,7 @@ int close_chat_handler (window_info *win)
 	// revert to using the tab bar
 	// call the config function to make sure it's done properly
 	change_windowed_chat(&use_windowed_chat, 1);
-	set_var_unsaved("windowed_chat", OPT_MULTI);
+	set_var_unsaved("windowed_chat", INI_FILE_VAR);
 	
 	return 1;
 }
@@ -1039,40 +1087,52 @@ int current_tab = 0;
 int tab_bar_width = 0;
 int tab_bar_height = 18;
 
-void add_chan_name(int no, char * name, char * desc)
+static chan_name *create_chan_name(int no, const char* name, const char* desc)
 {
-	chan_name *entry;
-	int len;
-
-	if(((entry = malloc(sizeof(*entry))) == NULL)
-		||((entry->description = malloc(strlen(desc)+1)) == NULL)
-		||((entry->name = malloc(strlen(name)+1)) == NULL)) {
-		LOG_ERROR("Memory allocation error reading channel list");
-		return;
+	chan_name *entry = malloc(sizeof(*entry));
+	if (!entry)
+		return NULL;
+	if ( !(entry->description = strdup(desc)) )
+	{
+		free(entry);
+		return NULL;
+	}
+	if ( !(entry->name = strdup(name)) )
+	{
+		free(entry->description);
+		free(entry);
+		return NULL;
 	}
 	entry->channel = no;
-	safe_strncpy(entry->name, name, strlen(name) + 1);
-	safe_strncpy(entry->description, desc, strlen(desc) + 1);
+	return entry;
+}
+
+static chan_name *add_chan_name(int no, const char * name, const char * desc)
+{
+	chan_name *entry = create_chan_name(no, name, desc);
+	int len;
+
+	if (!entry)
+	{
+		LOG_ERROR("Memory allocation error reading channel list");
+		return NULL;
+	}
 	queue_push(chan_name_queue, entry);
 	len = chan_name_queue->nodes-CS_MAX_DISPLAY_CHANS;
 	if(len > 0 && chan_sel_scroll_id == -1 && chan_sel_win != -1) {
 		chan_sel_scroll_id = vscrollbar_add_extended (chan_sel_win, 0, NULL, 165, 20, 20, 163, 0, 1.0, 0.77f, 0.57f, 0.39f, 0, 1, len);
 	}
+
+	return entry;
 }
 
-void add_spec_chan_name(int no, char * name, char * desc)
+static void add_spec_chan_name(int no, const char* name, const char* desc)
 {
-	chan_name *entry;
-	if(((entry = malloc(sizeof(*entry))) == NULL)
-		||((entry->description = malloc(strlen(desc)+1)) == NULL)
-		||((entry->name = malloc(strlen(name)+1)) == NULL)){
-			LOG_ERROR("Memory allocation error reading channel list");
-			return;
-		}
-	entry->channel = no;
-	safe_strncpy(entry->name, name, strlen(name) + 1);
-	safe_strncpy(entry->description, desc, strlen(desc) + 1);
-	pseudo_chans[no]=entry;
+	chan_name *entry = create_chan_name(no, name, desc);
+	if (entry)
+		pseudo_chans[no] = entry;
+	else
+		LOG_ERROR("Memory allocation error reading channel list");
 }
 
 void generic_chans(void)
@@ -1108,11 +1168,10 @@ void init_channel_names(void)
 	char *channelname;
 	char *channeldesc;
 	int channelno;
-	
+
 	// Temp info
 	xmlChar *attrib;
-	int attriblen;
-	
+
 	queue_initialise(&chan_name_queue);
 
 	// Load the file, depending on WINDOWS = def|undef
@@ -1148,10 +1207,10 @@ void init_channel_names(void)
 		generic_chans();
 		return;
 	}
-	
+
 	// Load first child node
 	cur = cur->xmlChildrenNode;
-	
+
 	// Loop while we have a node, copying ATTRIBS, etc
 	while (cur != NULL)	{
 		if(cur->type != XML_ELEMENT_NODE) {
@@ -1164,14 +1223,11 @@ void init_channel_names(void)
 				xmlFree (attrib);
 				continue;
 			}
-			attriblen = strlen ((char*)attrib);
-			if (attriblen < 1) {
+			if (xmlStrlen(attrib) < 1) {
 				LOG_ERROR (xml_bad_node);
 				xmlFree (attrib);
 				continue;
 			}
-			/*channelname = malloc (attriblen)+1;
-			my_xmlStrncopy (&channelname, attrib, attriblen);*/
 			channelname = (char*)xmlStrdup(attrib);
 			xmlFree (attrib);
 
@@ -1182,8 +1238,7 @@ void init_channel_names(void)
 				xmlFree (attrib);
 				continue;
 			}
-			attriblen = strlen ((char*)attrib);
-			if (attriblen < 1) {
+			if (xmlStrlen(attrib) < 1) {
 				LOG_ERROR (xml_bad_node);
 				xmlFree (attrib);
 				continue;
@@ -1198,13 +1253,12 @@ void init_channel_names(void)
 				continue;
 			}
 			attrib = cur->children->content;
-			attriblen = strlen ((char*)attrib);
-			/*channeldesc = malloc (attriblen)+1;
-			my_xmlStrncopy (&channeldesc, attrib, attriblen);*/
 			channeldesc = (char*)xmlStrdup(attrib);
-			
+
 			// Add it.
 			add_spec_chan_name(channelno, channelname, channeldesc);
+			free(channelname);
+			free(channeldesc);
 		} else if ((!xmlStrcmp (cur->name, (const xmlChar *)"channel"))) {
 			// Get the channel.
 			attrib = xmlGetProp (cur, (xmlChar*)"number");
@@ -1213,15 +1267,14 @@ void init_channel_names(void)
 				xmlFree (attrib);
 				continue;
 			}
-			attriblen = strlen ((char*)attrib);
-			if (attriblen < 1){
+			if (xmlStrlen(attrib) < 1){
 				LOG_ERROR (xml_bad_node);
 				xmlFree (attrib);
 				continue;
 			}
 			channelno = atoi ((char*)attrib);
 			xmlFree (attrib);
-			
+
 			// Get the name.
 			attrib = xmlGetProp (cur, (xmlChar*)"name");
 			if (attrib == NULL){
@@ -1229,17 +1282,14 @@ void init_channel_names(void)
 				xmlFree (attrib);
 				continue;
 			}
-			attriblen = strlen ((char*)attrib);
-			if (attriblen < 1){
+			if (xmlStrlen(attrib) < 1){
 				LOG_ERROR (xml_bad_node);
 				xmlFree (attrib);
 				continue;
 			}
-			/*channelname = malloc (attriblen)+1;
-			my_xmlStrncopy (&channelname, attrib, attriblen);*/
 			channelname = (char*)xmlStrdup(attrib);
 			xmlFree (attrib);
-			
+
 			// Get the description.
 			if (cur->children == NULL) {
 				free (channelname);
@@ -1251,13 +1301,12 @@ void init_channel_names(void)
 				continue;
 			}
 			attrib = cur->children->content;
-			/*attriblen = strlen (attrib);
-			channeldesc = malloc (attriblen);
-			my_xmlStrncopy (&channeldesc, attrib, attriblen);*/
 			channeldesc = (char*)xmlStrdup(attrib);
-			
+
 			// Add it.
 			add_chan_name(channelno, channelname, channeldesc);
+			free(channelname);
+			free(channeldesc);
 		} else {
 			LOG_ERROR (xml_undefined_node, file, (cur->name != NULL && strlen((char*)cur->name) < 100) ? cur->name	: (const xmlChar *)"not a string");
 		}
@@ -1268,6 +1317,7 @@ void init_channel_names(void)
 		LOG_ERROR(using_builtin_chanlist);
 		generic_chans();
 	}
+	xmlFreeDoc(doc);
 }
 
 void cleanup_chan_names(void)
@@ -1288,7 +1338,7 @@ void cleanup_chan_names(void)
 		}
 		free(pseudo_chans[i]);
 	}
-	while(step->next != NULL) {
+	while(step != NULL) {
 		temp_node = step;
 		step = step->next;
 		temp_cn = queue_delete_node(chan_name_queue, temp_node);
@@ -1303,6 +1353,7 @@ void cleanup_chan_names(void)
 		}
 		free(temp_cn);
 	}
+	queue_destroy(chan_name_queue);
 }
 
 
@@ -1406,13 +1457,19 @@ int tab_bar_button_click (widget_list *w, int mx, int my, Uint32 flags)
 		// shouldn't happen
 		return 0;
 	
-
-	// NOTE: This is an optimization, instead of redefining a "Tab/Button" type.
-	//		 Further use of this would be best served be a new definition.
-	// Detect clicking on 'x'
-	if(tabs[itab].channel == CHAT_CHANNEL1 || tabs[itab].channel == CHAT_CHANNEL2 ||
-	   tabs[itab].channel == CHAT_CHANNEL3)
+	if (flags&ELW_RIGHT_MOUSE)
 	{
+		display_channel_color_win(get_active_channel(tabs[itab].channel));
+		return 1;
+	}
+	else
+	{
+		// NOTE: This is an optimization, instead of redefining a "Tab/Button" type.
+		//		 Further use of this would be best served be a new definition.
+		// Detect clicking on 'x'
+		if(tabs[itab].channel == CHAT_CHANNEL1 || tabs[itab].channel == CHAT_CHANNEL2 ||
+		   tabs[itab].channel == CHAT_CHANNEL3)
+		{
 			int x = w->len_x - 6;
 			int y = 5;
 			char str[256];
@@ -1440,20 +1497,18 @@ int tab_bar_button_click (widget_list *w, int mx, int my, Uint32 flags)
 				do_click_sound();
 				return 1; //The click was handled, no need to continue
 			}
-	}
+		}
 
 
-	if (current_tab != itab)
-	{
-		switch_to_tab(itab);
-		do_click_sound();
+		if (current_tab != itab)
+		{
+			switch_to_tab(itab);
+			do_click_sound();
+		}
+		lines_to_show = 10;
 	}
-	lines_to_show = 10;
-	
 	return 1;
 }
-
-char tmp_tab_label[20];
 
 chan_name *tab_label (Uint8 chan)
 {
@@ -1462,6 +1517,8 @@ chan_name *tab_label (Uint8 chan)
 	node_t *step = queue_front_node(chan_name_queue);
 	char name[255];
 	char desc[255];
+	chan_name *res;
+
 	switch (chan)
 	{
 		case CHAT_ALL:	return pseudo_chans[2];
@@ -1495,15 +1552,16 @@ chan_name *tab_label (Uint8 chan)
 		}
 	}
 	//we didn't find it, so we use the generic version
-	safe_snprintf (name, sizeof(name), pseudo_chans[0]->name, cnr);
-	safe_snprintf (desc, sizeof(desc), pseudo_chans[0]->description, cnr);
-	add_chan_name(cnr,name,desc);
+	safe_snprintf(name, sizeof(name), pseudo_chans[0]->name, cnr);
+	safe_snprintf(desc, sizeof(desc), pseudo_chans[0]->description, cnr);
+	res = add_chan_name(cnr, name, desc);
 
-	if(chan_sel_scroll_id >= 0 && steps > 8) {
+	if (chan_sel_scroll_id >= 0 && steps > 8) {
 		vscrollbar_set_bar_len(chan_sel_win, chan_sel_scroll_id, steps-8);
 		//we're adding another name to the queue, so the window scrollbar needs to be adusted
 	}
-	return step->next->data;
+
+	return res;
 }
 
 unsigned int chan_int_from_name(char * name, int * return_length)
@@ -1689,13 +1747,25 @@ static int draw_tab_details (widget_list *W)
 		{
 			int x = W->pos_x+2;
 			int y = W->pos_y+1;
+			int i, color;
 			/* draw the "+" for the active channel */
+			for(i=0; i<MAX_CHANNEL_COLORS; i++)
+			{
+				if(channel_colors[i].nr == get_active_channel(tabs[itab].channel) && channel_colors[i].color > -1)
+					break;
+			}
+			if(i < MAX_CHANNEL_COLORS)
+			{
+				color = channel_colors[i].color;
+				glColor3ub(colors_list[color].r1, colors_list[color].g1, colors_list[color].b1);
+			}
 			glBegin(GL_LINES);
 				glVertex2i(x+gx_adjust,y+4);
 				glVertex2i(x+7+gx_adjust,y+4);
 				glVertex2i(x+3,y+gy_adjust);
 				glVertex2i(x+3,y+7+gy_adjust);
 			glEnd();
+			glColor3f(0.77f,0.57f,0.39f);
 			/* draw a dotted underline if input would go to this channel */
 			if ((input_text_line.len > 0) && (input_text_line.data[0] == '@') && !((input_text_line.len > 1) && (input_text_line.data[1] == '@')))
 			{
@@ -1740,7 +1810,7 @@ int add_tab_button (Uint8 channel)
 			// already there
 			return itab;
 	}
-	
+
 	if (tabs_in_use >= MAX_CHAT_TABS)
 		// no more room. Shouldn't happen anyway.
 		return -1;
@@ -1754,23 +1824,22 @@ int add_tab_button (Uint8 channel)
 	label = chan->name;
 	tabs[tabs_in_use].description = chan->description;
 
-	tabs[tabs_in_use].button = button_add_extended (tab_bar_win, cur_button_id++, NULL, tab_bar_width, 0, 0, tab_bar_height, 0, 0.75, 0.77f, 0.57f, 0.39f, label);
+	tabs[tabs_in_use].button = button_add_extended(tab_bar_win, cur_button_id++, NULL, tab_bar_width, 0, 0, tab_bar_height, BUTTON_SQUARE, 0.75, 0.77f, 0.57f, 0.39f, label);
 	if(channel == CHAT_HIST || channel == CHAT_LIST) {
 		//a couple of special cases
-		widget_set_OnClick (tab_bar_win, tabs[itab].button, tab_special_click);
-		widget_set_color (tab_bar_win, tabs[itab].button, 0.5f, 0.75f, 1.0f);
+		widget_set_OnClick (tab_bar_win, tabs[tabs_in_use].button, tab_special_click);
+		widget_set_color (tab_bar_win, tabs[tabs_in_use].button, 0.5f, 0.75f, 1.0f);
 	} else {
 		//general case
-		widget_set_OnClick (tab_bar_win, tabs[itab].button, tab_bar_button_click);
+		widget_set_OnClick (tab_bar_win, tabs[tabs_in_use].button, tab_bar_button_click);
 	}
-	widget_set_OnMouseover (tab_bar_win, tabs[itab].button, chan_tab_mouseover_handler);
-	widget_set_type(tab_bar_win, tabs[itab].button, &square_button_type); 
+	widget_set_OnMouseover (tab_bar_win, tabs[tabs_in_use].button, chan_tab_mouseover_handler);
  	// Handlers for the 'x'
  	// Make sure it's a CHANNEL first
- 	if(tabs[itab].channel == CHAT_CHANNEL1 || tabs[itab].channel == CHAT_CHANNEL2 ||
- 	   tabs[itab].channel == CHAT_CHANNEL3)
+	if(tabs[tabs_in_use].channel == CHAT_CHANNEL1 || tabs[tabs_in_use].channel == CHAT_CHANNEL2 ||
+		tabs[tabs_in_use].channel == CHAT_CHANNEL3)
  	{
- 		widget_set_OnDraw (tab_bar_win, tabs[itab].button, draw_tab_details);
+ 		widget_set_OnDraw (tab_bar_win, tabs[tabs_in_use].button, draw_tab_details);
  	}
 	tab_bar_width += widget_get_width (tab_bar_win, tabs[tabs_in_use].button)+1;
 	resize_window (tab_bar_win, tab_bar_width, tab_bar_height);
@@ -2064,17 +2133,352 @@ int command_jlc(char * text, int len)
 	return 0; //note: this change could also put us over the 160-char limit if not checked
 }
 
-void chan_target_name(char * text, int len)
-{
-	unsigned int num;
-	int mylen;
-	char buffer[MAX_TEXT_MESSAGE_LENGTH];
+////////////////////////////////////////////////////////////////////////
+//  channel color stuff
 
-	num = chan_int_from_name(text+2, &mylen);
-	if(num <= 0) {
-		send_input_text_line (text, len);
+channelcolor channel_colors[MAX_CHANNEL_COLORS];
+char channel_number_buffer[10] = {0};
+Uint32 channel_to_change = 0;
+int selected_color = -1;
+static int channel_colors_set = 0;
+
+int channel_color_win = -1;
+int color_button1_id = 0;
+int color_button2_id = 7;
+int color_button3_id = 14;
+int color_button4_id = 21;
+int color_button5_id = 1;
+int color_button6_id = 8;
+int color_button7_id = 15;
+int color_button8_id = 22;
+int color_button9_id = 2;
+int color_button10_id = 9;
+int color_button11_id = 16;
+int color_button12_id = 23;
+int color_button13_id = 3;
+int color_button14_id = 10;
+int color_button15_id = 17;
+int color_button16_id = 24;
+int color_button17_id = 4;
+int color_button18_id = 11;
+int color_button19_id = 18;
+int color_button20_id = 25;
+int color_button21_id = 5;
+int color_button22_id = 12;
+int color_button23_id = 19;
+int color_button24_id = 26;
+int color_button25_id = 6;
+int color_button26_id = 13;
+int color_button27_id = 20;
+int color_button28_id = 27;
+int color_set_button_id = 31;
+int color_delete_button_id = 32;
+int color_label_id = 41;
+
+int display_channel_color_handler(window_info *win)
+{
+	char string[50] = {0};
+
+	safe_snprintf(string, sizeof(string), "%s %i", channel_color_str, channel_to_change);
+	label_set_text(channel_color_win, color_label_id, string);
+	return 1;
+}
+
+int click_channel_color_handler(widget_list *w, int mx, int my, Uint32 flags)
+{
+	if(w->id >= color_button1_id && w->id <= color_button28_id)
+	{
+		selected_color = w->id;
+		do_click_sound();
+		return 1;
+	}
+	if(w->id == color_set_button_id)
+	{
+		if(channel_to_change > 0 && selected_color >= 0)
+		{
+			int i;
+			for(i=0; i<MAX_CHANNEL_COLORS; i++)
+			{
+				if(channel_colors[i].nr == channel_to_change)
+					break;
+			}
+			if(i<MAX_CHANNEL_COLORS)
+			{
+				channel_colors[i].color = selected_color;
+				do_click_sound();
+				hide_window(channel_color_win);
+				channel_to_change = 0;
+				selected_color = -1;
+				channel_colors_set = 1;
+				return 1;
+			}
+			for(i=0; i<MAX_CHANNEL_COLORS; i++)
+			{
+				if(channel_colors[i].nr == 0)
+					break;
+			}
+			
+			if(i<MAX_CHANNEL_COLORS)
+			{
+				channel_colors[i].nr = channel_to_change;
+				channel_colors[i].color = selected_color;
+				do_click_sound();
+				hide_window(channel_color_win);
+				channel_to_change = 0;
+				selected_color = -1;
+				channel_colors_set = 1;
+				return 1;
+			} else {
+				LOG_TO_CONSOLE(c_red3, "You reached the maximum numbers of channel colors.");
+				return 1;
+			}
+		}
+		return 0;
+	}
+	if(w->id == color_delete_button_id)
+	{
+		int i;
+		for(i=0; i<MAX_CHANNEL_COLORS; i++)
+		{
+			if(channel_colors[i].nr == channel_to_change)
+				break;
+		}
+		if(i<MAX_CHANNEL_COLORS)
+		{
+			channel_colors[i].color = -1;
+			channel_colors[i].nr = 0;
+			channel_colors_set = 1;
+		}
+		do_click_sound();
+		hide_window(channel_color_win);
+		channel_to_change = 0;
+		selected_color = -1;
+		return 1;
+	}
+	return 0;
+}
+
+int display_channel_color_win(Uint32 channel_number)
+{
+	int our_root_win = -1;
+	int x, y = 6;
+	int window_width = 470;
+
+	if(channel_number == 0){
+		return -1;
+	}
+
+	channel_to_change = channel_number;
+
+	if(channel_color_win < 0) 
+	{
+		if (!windows_on_top) {
+			our_root_win = game_root_win;
+		}
+		/* Create the window */
+		channel_color_win = create_window(channel_color_title_str, our_root_win, 0, 300, 40, window_width, 350, ELW_WIN_DEFAULT);
+		set_window_handler(channel_color_win, ELW_HANDLER_DISPLAY, &display_channel_color_handler);
+		/* Add labels */
+		x = 10;
+		color_label_id = label_add_extended(channel_color_win, color_label_id, NULL, x, y, 0, 0.9f, 0.77f, 0.57f, 0.39f, channel_color_str);
+		/* Add color buttons */
+		y += 24;
+		color_button1_id = button_add_extended(channel_color_win, color_button1_id, NULL, x, y, 107, 30, 0, 1.0, 1.0, 0.7, 0.76, "red1");
+		widget_set_OnClick(channel_color_win, color_button1_id, click_channel_color_handler);
+		x += 115;
+		color_button2_id = button_add_extended(channel_color_win, color_button2_id, NULL, x, y, 107, 30, 0, 1.0, 0.98, 0.35, 0.35, "red2");
+		widget_set_OnClick(channel_color_win, color_button2_id, click_channel_color_handler);
+		x += 115;
+		color_button3_id = button_add_extended(channel_color_win, color_button3_id, NULL, x, y, 107, 30, 0, 1.0, 0.87, 0.0, 0.0, "red3");
+		widget_set_OnClick(channel_color_win, color_button3_id, click_channel_color_handler);
+		x += 115;
+		color_button4_id = button_add_extended(channel_color_win, color_button4_id, NULL, x, y, 107, 30, 0, 1.0, 0.49, 0.01, 0.01, "red4");
+		widget_set_OnClick(channel_color_win, color_button4_id, click_channel_color_handler);
+		x = 10;
+		y += 39;
+		color_button5_id = button_add_extended(channel_color_win, color_button5_id, NULL, x, y, 107, 30, 0, 1.0, 0.97, 0.77, 0.62, "orange1");
+		widget_set_OnClick(channel_color_win, color_button5_id, click_channel_color_handler);
+		x += 115;
+		color_button6_id = button_add_extended(channel_color_win, color_button6_id, NULL, x, y, 107, 30, 0, 1.0, 0.99, 0.48, 0.23, "orange2");
+		widget_set_OnClick(channel_color_win, color_button6_id, click_channel_color_handler);
+		x += 115;
+		color_button7_id = button_add_extended(channel_color_win, color_button7_id, NULL, x, y, 107, 30, 0, 1.0, 0.75, 0.4, 0.06, "orange3");
+		widget_set_OnClick(channel_color_win, color_button7_id, click_channel_color_handler);
+		x += 115;
+		color_button8_id = button_add_extended(channel_color_win, color_button8_id, NULL, x, y, 107, 30, 0, 1.0, 0.51, 0.19, 0.01, "orange4");
+		widget_set_OnClick(channel_color_win, color_button8_id, click_channel_color_handler);
+		x = 10;
+		y += 39;
+		color_button9_id = button_add_extended(channel_color_win, color_button9_id, NULL, x, y, 107, 30, 0, 1.0, 0.98, 0.98, 0.75, "yellow1");
+		widget_set_OnClick(channel_color_win, color_button9_id, click_channel_color_handler);
+		x += 115;
+		color_button10_id = button_add_extended(channel_color_win, color_button10_id, NULL, x, y, 107, 30, 0, 1.0, 0.99, 0.93, 0.22, "yellow2");
+		widget_set_OnClick(channel_color_win, color_button10_id, click_channel_color_handler);
+		x += 115;
+		color_button11_id = button_add_extended(channel_color_win, color_button11_id, NULL, x, y, 107, 30, 0, 1.0, 0.91, 0.68, 0.08, "yellow3");
+		widget_set_OnClick(channel_color_win, color_button11_id, click_channel_color_handler);
+		x += 115;
+		color_button12_id = button_add_extended(channel_color_win, color_button12_id, NULL, x, y, 107, 30, 0, 1.0, 0.51, 0.44, 0.02, "yellow4");
+		widget_set_OnClick(channel_color_win, color_button12_id, click_channel_color_handler);
+		x = 10;
+		y += 39;
+		color_button13_id = button_add_extended(channel_color_win, color_button13_id, NULL, x, y, 107, 30, 0, 1.0, 0.79, 1.0, 0.8, "green1");
+		widget_set_OnClick(channel_color_win, color_button13_id, click_channel_color_handler);
+		x += 115;
+		color_button14_id = button_add_extended(channel_color_win, color_button14_id, NULL, x, y, 107, 30, 0, 1.0, 0.02, 0.98, 0.61, "green2");
+		widget_set_OnClick(channel_color_win, color_button14_id, click_channel_color_handler);
+		x += 115;
+		color_button15_id = button_add_extended(channel_color_win, color_button15_id, NULL, x, y, 107, 30, 0, 1.0, 0.15, 0.77, 0.0, "green3");
+		widget_set_OnClick(channel_color_win, color_button15_id, click_channel_color_handler);
+		x += 115;
+		color_button16_id = button_add_extended(channel_color_win, color_button16_id, NULL, x, y, 107, 30, 0, 1.0, 0.08, 0.58, 0.02, "green4");
+		widget_set_OnClick(channel_color_win, color_button16_id, click_channel_color_handler);
+		x = 10;
+		y += 39;
+		color_button17_id = button_add_extended(channel_color_win, color_button17_id, NULL, x, y, 107, 30, 0, 1.0, 0.66, 0.94, 0.98, "blue1");
+		widget_set_OnClick(channel_color_win, color_button17_id, click_channel_color_handler);
+		x += 115;
+		color_button18_id = button_add_extended(channel_color_win, color_button18_id, NULL, x, y, 107, 30, 0, 1.0, 0.46, 0.59, 0.97, "blue2");
+		widget_set_OnClick(channel_color_win, color_button18_id, click_channel_color_handler);
+		x += 115;
+		color_button19_id = button_add_extended(channel_color_win, color_button19_id, NULL, x, y, 107, 30, 0, 1.0, 0.27, 0.28, 0.82, "blue3");
+		widget_set_OnClick(channel_color_win, color_button19_id, click_channel_color_handler);
+		x += 115;
+		color_button20_id = button_add_extended(channel_color_win, color_button20_id, NULL, x, y, 107, 30, 0, 1.0, 0.06, 0.06, 0.73, "blue4");
+		widget_set_OnClick(channel_color_win, color_button20_id, click_channel_color_handler);
+		x = 10;
+		y += 39;
+		color_button21_id = button_add_extended(channel_color_win, color_button21_id, NULL, x, y, 107, 30, 0, 1.0, 0.82, 0.71, 0.98, "purple1");
+		widget_set_OnClick(channel_color_win, color_button21_id, click_channel_color_handler);
+		x += 115;
+		color_button22_id = button_add_extended(channel_color_win, color_button22_id, NULL, x, y, 107, 30, 0, 1.0, 0.85, 0.36, 0.96, "purple2");
+		widget_set_OnClick(channel_color_win, color_button22_id, click_channel_color_handler);
+		x += 115;
+		color_button23_id = button_add_extended(channel_color_win, color_button23_id, NULL, x, y, 107, 30, 0, 1.0, 0.51, 0.33, 0.96, "purple3");
+		widget_set_OnClick(channel_color_win, color_button23_id, click_channel_color_handler);
+		x += 115;
+		color_button24_id = button_add_extended(channel_color_win, color_button24_id, NULL, x, y, 107, 30, 0, 1.0, 0.42, 0.0, 0.67, "purple4");
+		widget_set_OnClick(channel_color_win, color_button24_id, click_channel_color_handler);
+		x = 10;
+		y += 39;
+		color_button25_id = button_add_extended(channel_color_win, color_button25_id, NULL, x, y, 107, 30, 0, 1.0, 1.0, 1.0, 1.0, "grey1");
+		widget_set_OnClick(channel_color_win, color_button25_id, click_channel_color_handler);
+		x += 115;
+		color_button26_id = button_add_extended(channel_color_win, color_button26_id, NULL, x, y, 107, 30, 0, 1.0, 0.6, 0.6, 0.6, "grey2");
+		widget_set_OnClick(channel_color_win, color_button26_id, click_channel_color_handler);
+		x += 115;
+		color_button27_id = button_add_extended(channel_color_win, color_button27_id, NULL, x, y, 107, 30, 0, 1.0, 0.62, 0.62, 0.62, "grey3");
+		widget_set_OnClick(channel_color_win, color_button27_id, click_channel_color_handler);
+		x += 115;
+		color_button28_id = button_add_extended(channel_color_win, color_button28_id, NULL, x, y, 107, 30, 0, 1.0, 0.16, 0.16, 0.16, "grey4");
+		widget_set_OnClick(channel_color_win, color_button28_id, click_channel_color_handler);
+		/* Add set/delete buttons */
+		x = (window_width - 100 - 110) /3;
+		y += 44;
+		color_set_button_id = button_add_extended(channel_color_win, color_set_button_id, NULL, x, y, 110, 30, 0, 1.0, 0.77f, 0.57f, 0.39f, channel_color_add_str);
+		widget_set_OnClick(channel_color_win, color_set_button_id, click_channel_color_handler);
+		x += x + 110;
+		color_delete_button_id = button_add_extended(channel_color_win, color_delete_button_id, NULL, x, y, 110, 30, 0, 1.0, 0.77f, 0.57f, 0.39f, channel_color_delete_str);
+		widget_set_OnClick(channel_color_win, color_delete_button_id, click_channel_color_handler);
+	} 
+	else
+	{
+		toggle_window(channel_color_win);
+	}
+
+	return channel_color_win;
+}
+
+void load_channel_colors (){
+	char fname[128];
+	FILE *fp;
+	int i;
+	off_t file_size;
+
+	if (channel_colors_set) {
+		/*
+		 * save existing channel colors instead of loading them if we are already logged in
+		 * this will take place when relogging after disconnection
+		 */
+		save_channel_colors();
 		return;
 	}
-	safe_snprintf(buffer, sizeof(buffer), "@@%d%s", num, text+2+mylen);
-	send_input_text_line (buffer, strlen(buffer));
+
+	for(i=0; i<MAX_CHANNEL_COLORS; i++)
+	{
+		channel_colors[i].nr = 0;
+		channel_colors[i].color = -1;
+	}
+
+	safe_snprintf(fname, sizeof(fname), "channel_colors_%s.dat",username_str);
+	my_tolower(fname);
+
+	/* sliently ignore non existing file */
+	if (file_exists_config(fname)!=1)
+		return;
+
+	file_size = get_file_size_config(fname);
+
+	/* if the file exists but is not a valid size, don't use it */
+	if ((file_size == 0) || (file_size != sizeof(channel_colors)))
+	{
+		LOG_ERROR("%s: Invalid format (size mismatch) \"%s\"\n", reg_error_str, fname);
+		return;
+	}
+
+	fp = open_file_config(fname,"rb");
+	if(fp == NULL){
+		LOG_ERROR("%s: %s \"%s\": %s\n", reg_error_str, cant_open_file, fname, strerror(errno));
+		return;
+	}
+
+	if (fread (channel_colors,sizeof(channel_colors),1, fp) != 1)
+	{
+		LOG_ERROR("%s() fail during read of file [%s] : %s\n", __FUNCTION__, fname, strerror(errno));
+		fclose (fp);
+		return;
+	}
+
+	fclose (fp);
+	channel_colors_set = 1;
+}
+
+void save_channel_colors(){
+	char fname[128];
+	FILE *fp;
+
+	if (!channel_colors_set)
+		return;
+
+	safe_snprintf(fname, sizeof(fname), "channel_colors_%s.dat",username_str);
+	my_tolower(fname);
+	fp=open_file_config(fname,"wb");
+	if(fp == NULL){
+		LOG_ERROR("%s: %s \"%s\": %s\n", reg_error_str, cant_open_file, fname, strerror(errno));
+		return;
+	}
+
+	if (fwrite (channel_colors,sizeof(channel_colors),1, fp) != 1)
+	{
+		LOG_ERROR("%s() fail during write of file [%s] : %s\n", __FUNCTION__, fname, strerror(errno));
+	}
+
+	fclose(fp);
+}
+
+int command_channel_colors(char * text, int len)
+{
+	int i;
+	char string[20];
+
+	LOG_TO_CONSOLE(c_grey1, "Your currently set channel colors:");
+	for(i=0; i<MAX_CHANNEL_COLORS; i++)
+	{
+		if(channel_colors[i].nr >0 && channel_colors[i].color > -1)
+		{
+			safe_snprintf(string, sizeof(string), "Channel %u", channel_colors[i].nr);
+			LOG_TO_CONSOLE(channel_colors[i].color, string);
+		}
+	}
+	return 1;
 }

@@ -19,6 +19,7 @@
 #include "interface.h"
 #include "mines.h"
 #include "misc.h"
+#include "named_colours.h"
 #include "spells.h"
 #include "textures.h"
 #include "tiles.h"
@@ -152,54 +153,38 @@ static __inline__ void draw_actor_points(float zoom_multip, float px, float py)
 			x = a->x_tile_pos * size_x;
 			y = float_minimap_size - (a->y_tile_pos * size_y);
 
-			glColor3f(0.0f,0.0f,0.0f);
+			glColor4f(0.0f,0.0f,0.0f,1.0f);
 			glVertex2f(x+2*zoom_multip, y+2*zoom_multip);
 
 			if (a->kind_of_actor == NPC)
-			{
-				glColor3f(0.0f,0.0f,1.0f); //blue NPCs
-			}
+				elglColourN("minimap.npc");
 			else if(a->actor_id == yourself)
-			{
-				glColor3f(0.0f,1.0f,0.0f); //green yourself
-			}
+				elglColourN("minimap.yourself");
 			else if(a->is_enhanced_model && (a->kind_of_actor ==  PKABLE_HUMAN || a->kind_of_actor == PKABLE_COMPUTER_CONTROLLED))
-			{
-				glColor3f(1.0f,0.0f,0.0f); //red PKable
-			}
+				elglColourN("minimap.pkable");
 			else if(a->is_enhanced_model && is_in_buddylist(a->actor_name))
-			{
-				glColor3f(0.0f,0.9f,1.0f); //aqua buddy
-			}
+				elglColourN("minimap.buddy");
 			else if (is_color ((unsigned char)a->actor_name[0]))
 			{
 				if(a->is_enhanced_model && is_in_buddylist(a->actor_name))
-				{
-					glColor3f(0.0f,0.9f,1.0f); // aqua buddy
-				}
+					elglColourN("minimap.buddy");
 				else
 				{	// Use the colour of their name. This gives purple bots, green demigods, etc.
 					int color = from_color_char (a->actor_name[0]);
-					glColor3ub (colors_list[color].r1,
+					glColor4ub (colors_list[color].r1,
 						colors_list[color].g1,
-						colors_list[color].b1);
+						colors_list[color].b1, 255);
 				}
 			}
 			else if(!a->is_enhanced_model)
 			{
 				if (a->dead) 
-				{
-					glColor3f(0.8f, 0.8f, 0.0f); // dark yellow: dead animal/monster
-				}
+					elglColourN("minimap.deadcreature");
 				else // alive
-				{
-					glColor3f(1.0f, 1.0f, 0.0f); // yellow animal/monster
-				}
+					elglColourN("minimap.creature");
 			}
 			else
-			{
-				glColor3f(1.0f, 1.0f, 1.0f); // white other player
-			}
+				elglColourN("minimap.otherplayer");
 			// Draw it!
 			glVertex2f(x, y);
 		}
@@ -215,7 +200,7 @@ static __inline__ void draw_actor_points(float zoom_multip, float px, float py)
 			y = float_minimap_size - (m->y * size_y);
 			if(is_within_radius(x,y,px,py,zoom_multip*(minimap_size/2-15)))
 			{
-				glColor3f(0.15f, 0.65f, 0.45f); 
+				elglColourN("minimap.mine");
 				glVertex2f(x, y);
 			}
 		}
@@ -268,7 +253,7 @@ static __inline__ void draw_actor_points(float zoom_multip, float px, float py)
 				glDisable(GL_TEXTURE_2D);
 				rotate_actor_points(zoom_multip,px,py);
 				glBegin(GL_LINES);
-				glColor3f(0.33f,0.6f,1.0f); //light blue
+				elglColourN("minimap.servermark");
 				glVertex2f(x-diff, y-diff);
 				glVertex2f(x+diff, y+diff);
 				glVertex2f(x-diff, y+diff);

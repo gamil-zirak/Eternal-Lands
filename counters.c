@@ -1,4 +1,3 @@
-
 #include <stdlib.h>
 #include <ctype.h>
 #include "counters.h"
@@ -12,6 +11,8 @@
 #include "interface.h"
 #include "manufacture.h"
 #include "multiplayer.h"
+#include "named_colours.h"
+#include "sound.h"
 #include "spells.h"
 #include "tabs.h"
 #include "io/elpathwrapper.h"
@@ -70,6 +71,8 @@ static int mouseover_name = 0;
 static int mouseover_session = 0;
 static int mouseover_total = 0;
 static int mouseover_entry_y = -1;
+static int mouse_clicked = 0;
+static int selected_entry = -1;
 static int counters_show_win_help = 0;
 
 static int product_count = 0;
@@ -77,6 +80,9 @@ static char product_name[128];
 static char to_count_name[128];
 static char *spell_names[128] = { NULL };
 static int requested_spell_id = -1;
+
+static const char *cat_str[NUM_COUNTERS] = { "Kills", "Deaths", "Harvests", "Alchemy", "Crafting", "Manufac.",
+	"Potions", "Spells", "Summons", "Engineering", "Breakages", "Events", "Tailoring", "Crit Fails" };
 
 static const char *temp_event_string[] =
 	{	"%s found a", /* keep this one first in the list as its different from the rest*/
@@ -88,8 +94,10 @@ static const char *temp_event_string[] =
 		"While harvesting, %s upset a radon pouch, ",
 		"%s found Joker and got ",
 		"%s found Joker and failed to get",
+		"%s found 1 Pear.",
 		"While harvesting, %s lit up a match to check the dung level, ",
 		"While trying to harvest, the outhouse lid fell on %s, ",
+		"While harvesting some dung, Mother Nature was nearby taking a dump. Unfortunately %s ",
 		"You just got food poisoned!" };
 static const char *count_str[] =
 	{	"dummy",
@@ -101,15 +109,20 @@ static const char *count_str[] =
 		"Upset a radon pouch",
 		"Gift from Joker",
 		"Gift from Joker (lost)",
+		"Found a Pear",
 		"Explosion while harvesting dung",
 		"Outhouse lid accident",
+		"Mother Nature taking a dump",
 		"Food poisoned" };
 static const int num_search_str = sizeof(count_str)/sizeof(char *);
 static char **search_str = NULL;
 static size_t *search_len = NULL;
 static Uint32 misc_event_time = 0;
 
-int harvesting = 0;
+static int harvesting_flag = 0;
+int now_harvesting(void) { return harvesting_flag; }
+void clear_now_harvesting(void) { harvesting_flag = 0; }
+void set_now_harvesting(void) { harvesting_flag = 1; }
 Uint32 disconnect_time;
 char harvest_name[32] = {0};
 int killed_by_player = 0;
@@ -343,7 +356,7 @@ void cleanup_counters()
 		search_len = NULL;
 	}
 	
-	harvesting = 0;
+	clear_now_harvesting();
 	counters_initialized = 0;
 }
 
@@ -383,6 +396,7 @@ void increment_counter(int counter_id, const char *name, int quantity, int extra
 	if (new_entry) {
 		/* Create a new entry. */
 		j = entries[i]++;
+		last_selected_counter_id = -1;  /* force recalculation of the scrollbar */
 		counters[i] = realloc(counters[i], entries[i] * sizeof(struct Counter));
 		counters[i][j].name = strdup(name);
 		counters[i][j].n_session = quantity;
@@ -438,35 +452,87 @@ static void cm_counters_pre_show_handler(window_info *win, int widget_id, int mx
 	cm_floating_flag = (floating_counter_flags & (1 << cm_selected_id)) ?1 :0;
 }
 
-static int cm_counters_handler(window_info *win, int widget_id, int mx, int my, int option)
+
+//	Prints the entries (total and name) in the specified category.
+//	If just_session is true, then session infomation is also
+//	included but only non-zero entries are included.
+//
+static void print_category(size_t cat, int just_session)
 {
-	// set the floating flag from the control var
-	if (option == 4)
+	int i;
+	char buf[256];
+
+	if (cat >= NUM_COUNTERS)
+		return;
+
+	if (just_session)
 	{
-		int flagbit = multiselect_get_selected(counters_win, multiselect_id);
-		if (cm_floating_flag)
-		{
-			floating_counter_flags |= 1 << flagbit;
-			if (!floating_session_counters)
-				toggle_OPT_BOOL_by_name("floating_session_counters");
-		}
-		else
-			floating_counter_flags &= ~(1 << flagbit);
-		return 1;
+		int has_session = 0;
+		for (i = 0; i < entries[cat]; i++)
+			if (counters[cat][i].n_session > 0)
+			{
+				has_session = 1;
+				break;
+			}
+		if (!has_session)
+			return;
 	}
 
+	safe_snprintf(buf, sizeof(buf), "%s:", cat_str[cat]);
+	LOG_TO_CONSOLE(c_green2, buf);
+
+	for (i = 0; i < entries[cat]; i++)
+	{
+		if (just_session)
+		{
+			if (counters[cat][i].n_session <= 0)
+				continue;
+			safe_snprintf(buf, sizeof(buf), "%12d %12d  %s",
+				counters[cat][i].n_session, counters[cat][i].n_total, counters[cat][i].name);
+		}
+		else
+			safe_snprintf(buf, sizeof(buf), "%12d  %s", counters[cat][i].n_total, counters[cat][i].name);
+		LOG_TO_CONSOLE(c_grey1,buf);
+	}
+}
+
+
+// The #session_counters command and menu option
+//
+void print_session_counters(const char *category)
+{
+	int i;
+	if ((category == NULL) || !(*category))
+		for (i = 0; i < NUM_COUNTERS; i++)
+			print_category(i, 1);
+	else
+	{
+		for (i = 0; i < NUM_COUNTERS; i++)
+			if (strncasecmp(category, cat_str[i], strlen(category)) == 0)
+			{
+				print_category(i, 1);
+				break;
+			}
+	}
+}
+
+
+static int cm_counters_handler(window_info *win, int widget_id, int mx, int my, int option)
+{
+	struct Counter *the_entry = NULL;
+	
 	// if the number of entries has changed, we could be about to use the wrong entry, don't use it
 	// if a entry index is invalid, don't use it
 	if ((cm_entry_count == entries[cm_selected_id]) &&
 		(cm_selected_entry >= 0) && (cm_selected_entry < entries[cm_selected_id]))
-	{
-		int i;
-		struct Counter *the_entry = &counters[cm_selected_id][cm_selected_entry];
+		the_entry = &counters[cm_selected_id][cm_selected_entry];
 
-		switch (option)
-		{
-			// delete entry
-			case 0:
+	switch (option)
+	{
+		case 0:		// delete entry
+			if (the_entry != NULL)
+			{
+				int i;
 				if (the_entry->name != NULL)
 					free(the_entry->name);	
 				// move the entries up, replacing the deleted one
@@ -479,17 +545,53 @@ static int cm_counters_handler(window_info *win, int widget_id, int mx, int my, 
 					the_entry++;
 				}
 				entries[cm_selected_id]--;
-				break;
+			}
+			else
+				return 0;
+			break;
 
-			// reset session total for entry
-			case 2:
+		case 2:		// reset session total for entry
+			if (the_entry != NULL)
 				the_entry->n_session = 0;
-				break;
-		}
-		return 1;
+			else
+				return 0;
+			break;
+
+		case 4:		// set the floating flag from the control var
+			{
+				int flagbit = multiselect_get_selected(counters_win, multiselect_id);
+				if (cm_floating_flag)
+				{
+					floating_counter_flags |= 1 << flagbit;
+					if (!floating_session_counters)
+						toggle_OPT_BOOL_by_name("floating_session_counters");
+				}
+				else
+					floating_counter_flags &= ~(1 << flagbit);
+			}
+			break;
+
+		case 6:		// print the category to console
+			print_category(cm_selected_id, 0);
+			break;
+
+		case 7:		// print all categories to console
+			{
+				int i;
+				for (i = 0; i < NUM_COUNTERS; i++)
+					print_category(i, 0);
+			}
+			break;
+
+		case 8:		// print session information to console
+			print_session_counters(NULL);
+			break;
+
+		default:
+			return 0;
 	}
 
-	return 0;
+	return 1;
 }
 
 void fill_counters_win()
@@ -501,20 +603,20 @@ void fill_counters_win()
 	set_window_handler(counters_win, ELW_HANDLER_MOUSEOVER, &mouseover_counters_handler);
 
 	multiselect_id = multiselect_add(counters_win, NULL, 8, 2, 104);
-	multiselect_button_add(counters_win, multiselect_id, 0, 0, "Kills", 1);
-	multiselect_button_add(counters_win, multiselect_id, 0, 25, "Deaths", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 125, "Harvests", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 150, "Alchemy", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 175, "Crafting", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 200, "Manufac.", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 225, "Potions", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 250, "Spells", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 275, "Summons", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 300, "Engineering", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 50, "Breakages", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 100, "Events", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 325, "Tailoring", 0);
-	multiselect_button_add(counters_win, multiselect_id, 0, 75, "Crit Fails", 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 0, cat_str[0], 1);
+	multiselect_button_add(counters_win, multiselect_id, 0, 25, cat_str[1], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 125, cat_str[2], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 150, cat_str[3], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 175, cat_str[4], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 200, cat_str[5], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 225, cat_str[6], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 250, cat_str[7], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 275, cat_str[8], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 300, cat_str[9], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 50, cat_str[10], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 100, cat_str[11], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 325, cat_str[12], 0);
+	multiselect_button_add(counters_win, multiselect_id, 0, 75, cat_str[13], 0);
 
 	counters_scroll_id = vscrollbar_add_extended(counters_win,
 			counters_scroll_id, NULL,
@@ -546,6 +648,7 @@ int display_counters_handler(window_info *win)
 		vscrollbar_set_bar_len(counters_win, counters_scroll_id, MAX(0, entries[i] - NUM_LINES));
 		vscrollbar_set_pos(counters_win, counters_scroll_id, 0);
 		last_selected_counter_id = selected_counter_id;
+		selected_entry = -1;
 	}
 
 	x = 120;
@@ -591,18 +694,27 @@ int display_counters_handler(window_info *win)
 		cm_selected_entry = -1;
 	
 	for (j = scroll, n = 0, y = 30; j < entries[i]; j++, n++) {
-		if (n == NUM_LINES) {
+		int mouse_over_this_entry = ((mouseover_entry_y >= y) && (mouseover_entry_y < y+16));
+
+		if (n == NUM_LINES)
 			break;
+
+		if (mouse_over_this_entry && mouse_clicked) {
+			selected_entry = j;
+			mouse_clicked = 0;
 		}
 
 		if (cm_selected_entry == j)
 			glColor3f(0.77f, 0.57f, 0.39f);
-		else if ((selected_counter_id == KILLS || selected_counter_id == DEATHS) && counters[i][j].extra) {
+		else if ((selected_counter_id == KILLS || selected_counter_id == DEATHS) && counters[i][j].extra)
 			glColor3f(0.8f, 0.2f, 0.2f);
-		} else {
+		else if (selected_entry == j)
+			elglColourN("global.mouseselected");
+		else if (mouse_over_this_entry)
+			elglColourN("global.mousehighlight");
+		else
 			glColor3f(1.0f, 1.0f, 1.0f);
-		}
-		
+
 		/* draw first so left padding does not overwrite name */
 		safe_snprintf(buffer, sizeof(buffer), "%12d", counters[i][j].n_session);
 		draw_string_small(x + 200, y, (unsigned char*)buffer, 1);
@@ -622,8 +734,7 @@ int display_counters_handler(window_info *win)
 				truncated_string(used_name, counters[i][j].name, dest_max_len, append_str, max_name_x, font_ratio);
 				draw_string_small(x, y, (unsigned char*)used_name, 1);
 				/* if the mouse is over this line and its truncated, tooltip to full name */
-				if (mouseover_entry_y > y && mouseover_entry_y < y+16)
-				{
+				if (mouseover_entry_y >= y && mouseover_entry_y < y+16) {
 					show_help(counters[i][j].name, -TAB_MARGIN, win->len_y+10+TAB_MARGIN);
 					counters_show_win_help = 0;
 				}
@@ -635,8 +746,7 @@ int display_counters_handler(window_info *win)
 		y += 16;
 	}
 
-	if (counters_show_win_help)
-	{
+	if (counters_show_win_help) {
 		show_help(cm_help_options_str, -TAB_MARGIN, win->len_y+10+TAB_MARGIN);
 		counters_show_win_help = 0;
 	}
@@ -664,15 +774,20 @@ CHECK_GL_ERRORS();
 int click_counters_handler(window_info *win, int mx, int my, Uint32 extra)
 {
 	 if (mx > 120 && my > 25 && my < win->len_y - 25) {
-		 if (extra&ELW_WHEEL_UP) {
+		if (extra&ELW_WHEEL_UP) {
 			vscrollbar_scroll_up(counters_win, counters_scroll_id);
 			return 1;
-		 }
+		}
 
-		 if (extra&ELW_WHEEL_DOWN) {
+		if (extra&ELW_WHEEL_DOWN) {
 			vscrollbar_scroll_down(counters_win, counters_scroll_id);
 			return 1;
-		 }
+		}
+
+		mouse_clicked = 1;
+		selected_entry = -1;
+		do_click_sound();
+
 	} else {
 		if (mouseover_name) {
 			if (sort_by[selected_counter_id-1] == NAME) {
@@ -696,6 +811,7 @@ int click_counters_handler(window_info *win, int mx, int my, Uint32 extra)
 			}
 		}
 		sort_counter(selected_counter_id);
+		selected_entry = -1;
 	}
 
 	return 1;
@@ -710,7 +826,7 @@ int mouseover_counters_handler(window_info *win, int mx, int my)
 		counters_show_win_help = 1;
 
 	if (my > 25){
-		if (my > 30 && my < (30+NUM_LINES*16) && mx >= 130 && mx <= 425) {
+		if (my > 30 && my < (30+NUM_LINES*16) && mx >= 130 && mx <= 540) {
 			mouseover_entry_y = my;
 		}
 		return 0;
@@ -820,7 +936,7 @@ void increment_death_counter(actor *a)
 		}
 
 		/* count deaths that happend while harvesting, may not have been due to harvest event though */
-		if (harvesting) {
+		if (now_harvesting()) {
 			/* a crude check to see if death was just after (1 second should be enough) a harvest event */
 			if (abs(SDL_GetTicks() - misc_event_time) < 1000) {
 				increment_counter(DEATHS, "Harvesting event", 1, 0);
@@ -829,7 +945,7 @@ void increment_death_counter(actor *a)
 
 			/* if you are killed while harvesting, there is no "you stopped harvesting" message */
 			/* resetting now prevents next items added to inventry getting added to harvest counter */
-			harvesting = 0;
+			clear_now_harvesting();
 		}
 
 		if (!found_death_reason && me->async_fighting) {

@@ -68,6 +68,7 @@ int last_line = 0;
 #define NUM_STREAM_BUFFERS 4
 
 #define MAX_PLAYLIST_ENTRIES 50
+#define MAX_PLAYLIST_FILENAME 64
 
 #define MAX_SOUND_FILES (MAX_SOUNDS * MAX_SOUND_VARIANTS * num_STAGES)	// The total number of files if every part of every
 																		// variant of every sound had a different file
@@ -81,6 +82,7 @@ int last_line = 0;
 #define MAX_SOUND_TILE_TYPES 20				// Maximum number of different tile types
 #define MAX_SOUND_TILES 30					// Maximum number of different tiles for a tile type
 #define MAX_SOUND_TILES_SOUNDS 5			// Maximum number of different sound types for a tile type
+#define MAX_SERVER_SOUNDS 10				// Maximum number of server sounds - keep up to date with the snd_xxx #defs client_serv.h
 
 #define MAX_SOUND_MAPS 150			// This value is the maximum number of maps sounds can be defined for
 									// (Roja has suggested 150 is safe for now)
@@ -89,6 +91,7 @@ int last_line = 0;
 #define MAX_SOUND_ITEMS 5			// This is the number of sounds defined for "Use item" sfx
 
 #define MAX_SOUND_WARNINGS 50		// The number of user defined sound warnings
+#define MAX_SND_WARNING_STRING 256	// Max size of warning string
 
 typedef enum
 {
@@ -244,7 +247,7 @@ typedef struct
 typedef struct
 {
 	int sound;
-	char string[256];
+	char string[MAX_SND_WARNING_STRING];
 } sound_warnings;
 
 typedef struct
@@ -254,6 +257,7 @@ typedef struct
 	unsigned int cookie;					// A cookie for the source
 	ALuint buffers[NUM_STREAM_BUFFERS];		// The stream buffers
 	OggVorbis_File stream;					// The Ogg file handle for this stream
+	int stream_opened;						// If try, its OK to call ov_clear()
 	vorbis_info * info;						// The Ogg info for this file handle
 	int fade;								// The current fade value for this stream
 	int fade_length;						// The length of the fade in or out (number of update_stream loops)
@@ -266,7 +270,7 @@ typedef struct
 } stream_data;
 
 typedef struct {
-	char file_name[64];
+	char file_name[MAX_PLAYLIST_FILENAME];
 	int min_x;
 	int max_x;
 	int min_y;
@@ -286,7 +290,7 @@ SDL_Thread *sound_streams_thread = NULL;
 SDL_mutex *sound_list_mutex = NULL;
 
 stream_data * music_stream = NULL;
-stream_data streams[MAX_STREAMS];
+stream_data *streams = NULL;
 
 ALfloat sound_gain = 1.0f;
 ALfloat music_gain = 1.0f;
@@ -322,27 +326,27 @@ static int must_restart_spell_sounds = 0;	// true if sounds have been stopped, t
 int snd_cur_map = -1;
 int cur_boundary = 0;
 
-unsigned int next_cookie = 1;									// Each playing source is identified by a unique cookie.
-sound_loaded sounds_list[MAX_BUFFERS * 2];						// The loaded sounds
-source_data sound_source_data[ABS_MAX_SOURCES];					// The active (playing) sources
-sound_type sound_type_data[MAX_SOUNDS];							// Configuration of the sound types
-sound_sample sound_sample_data[MAX_BUFFERS];					// Buffer data for each sample
-sound_file sound_files[MAX_SOUND_FILES];						// File names for each individual sound file
-background_default sound_background_defaults[MAX_BACKGROUND_DEFAULTS];	// Default background sounds
-																		// (must have non-overlapping time of day flags)
-int crowd_default;												// Default sound for crowd effects
-int walking_default;											// Default sound for walking
-map_sound_data sound_map_data[MAX_SOUND_MAPS];					// Data for map sfx
-effect_sound_data sound_effect_data[MAX_SOUND_EFFECTS];			// Data for effect sfx
-particle_sound_data sound_particle_data[MAX_SOUND_PARTICLES];	// Data for particle sfx
-item_sound_data sound_item_data[MAX_SOUND_ITEMS];				// Data for item sfx
-tile_sound_data sound_tile_data[MAX_SOUND_TILE_TYPES];			// Data for tile (walking) sfx
-int server_sound[10];											// Map of server sounds to sound def ids
-int sound_spell_data[10];										// Map of id's for spells-that-affect-you to sounds
-sound_warnings warnings_list[MAX_SOUND_WARNINGS];				// List of strings to monitor for warning sounds
-int afk_snd_warning;											// Whether to play a sound on receiving a message while AFK
+unsigned int next_cookie = 1;							// Each playing source is identified by a unique cookie.
+sound_loaded *sounds_list = NULL;						// The loaded sounds
+source_data *sound_source_data = NULL;				// The active (playing) sources
+sound_type *sound_type_data = NULL;					// Configuration of the sound types
+sound_sample *sound_sample_data = NULL;				// Buffer data for each sample
+sound_file *sound_files = NULL;						// File names for each individual sound file
+background_default *sound_background_defaults = NULL;// Default background sounds
+														// (must have non-overlapping time of day flags)
+int crowd_default = -1;									// Default sound for crowd effects
+int walking_default = -1;								// Default sound for walking
+map_sound_data *sound_map_data = NULL;				// Data for map sfx
+effect_sound_data *sound_effect_data = NULL;			// Data for effect sfx
+particle_sound_data *sound_particle_data = NULL;		// Data for particle sfx
+item_sound_data *sound_item_data = NULL;				// Data for item sfx
+tile_sound_data *sound_tile_data = NULL;				// Data for tile (walking) sfx
+int *server_sound = NULL;								// Map of server sounds to sound def ids
+int *sound_spell_data = NULL;							// Map of id's for spells-that-affect-you to sounds
+sound_warnings *warnings_list = NULL;					// List of strings to monitor for warning sounds
+int afk_snd_warning = 0;								// Whether to play a sound on receiving a message while AFK
 
-playlist_entry playlist[MAX_PLAYLIST_ENTRIES];
+playlist_entry *playlist = NULL;
 int loop_list = 1;
 int list_pos = -1;
 
@@ -355,7 +359,6 @@ int list_pos = -1;
 int load_ogg_file(char *file_name, OggVorbis_File *oggFile);
 int stream_ogg_file(char *file_name, stream_data * stream, int numBuffers);
 int stream_ogg(ALuint buffer, OggVorbis_File * inStream, vorbis_info * info);
-ALvoid * load_ogg_into_memory(char * szPath, ALenum *inFormat, ALsizei *inSize, ALfloat *inFreq);
 /* Stream handling */
 static char * get_stream_type(int type);
 void play_stream(int sound, stream_data * stream, ALfloat gain);
@@ -374,9 +377,6 @@ void play_song(int list_pos);
 void find_next_song(int tx, int ty, int day_time);
 
 /* Source functions */
-void add_source_to_lists(source_data *pSource);
-void remove_source_from_lists(source_data *pSource);
-void clear_source(source_data *pSource);
 source_data * get_available_source(int priority);
 source_data *insert_sound_source_at_index(unsigned int index);
 void release_source(source_data *pSource, int index);
@@ -407,7 +407,7 @@ void print_sound_boundary_coords(int map);
 #endif // DEBUG_MAP_SOUND
 /* Init functions */
 void parse_snd_devices(ALCchar * in_array, char * sound_devs);
-
+static void clear_playlist(void);
 
 
 /**************************
@@ -470,7 +470,6 @@ void turn_sound_off()
 		stop_sound_source_at_index(0);
 		continue;
 	}
-	UNLOCK_SOUND_LIST();
 	for (i = 0; i < max_streams; i++)
 	{
 		if (streams[i].type != STREAM_TYPE_MUSIC)
@@ -478,6 +477,7 @@ void turn_sound_off()
 			destroy_stream(&streams[i]);
 		}
 	}
+	UNLOCK_SOUND_LIST();
 	if ((error=alGetError()) != AL_NO_ERROR)
 	{
 #ifdef _EXTRA_SOUND_DEBUG
@@ -512,6 +512,7 @@ void turn_music_off()
 	if (!have_music)
 		return;
 	
+	LOCK_SOUND_LIST();
 	music_on = 0;
 	if (sound_streams_thread != NULL)
 	{
@@ -520,6 +521,7 @@ void turn_music_off()
 			destroy_stream(music_stream);
 		}
 	}
+	UNLOCK_SOUND_LIST();
 }
 
 void toggle_sounds(int *var)
@@ -625,16 +627,21 @@ int stream_ogg_file(char * in_filename, stream_data * stream, int numBuffers)
 	char filename[200];
 	
 	stop_stream(stream);
-	ov_clear(&stream->stream);
-	
+	if (stream->stream_opened)
+	{
+		ov_clear(&stream->stream);
+		stream->stream_opened = 0;
+	}
+
 	// Add the datadir to the input filename and try to open it
-	strcpy(filename, datadir);
-	strcat(filename, in_filename);
+	safe_strncpy(filename, datadir, sizeof(filename));
+	safe_strcat(filename, in_filename, sizeof(filename));
 	result = load_ogg_file(filename, &stream->stream);
 	if (!result) {
 		LOG_ERROR("Error loading ogg file: %s\n", filename);
 		return -1;
 	}
+	stream->stream_opened = 1;
 
 	stream->info = ov_info(&stream->stream, -1);
 	for (i = 0; i < numBuffers; i++)
@@ -716,34 +723,32 @@ ALvoid * load_ogg_into_memory(char * szPath, ALenum *inFormat, ALsizei *inSize, 
 	ALsizei size;
 	ALfloat freq;
 	char * data;
-	
-	// Reset the variables
-	bitStream = 0;
-	result = 0;
-	format = 0;
-	size = 0;
-	freq = 0.0f;
-	
+
 	// Load the file
 	result = load_ogg_file(szPath, &oggFile);
 	if (!result)
-	{
 		return NULL;
-	}
+
 	// Get some information about the OGG file
 	pInfo = ov_info(&oggFile, -1);
-	
+
 	// Check the number of channels... always use 16-bit samples
-	if (pInfo->channels == 1)
-		format = AL_FORMAT_MONO16;
-	else
-		format = AL_FORMAT_STEREO16;
-	
+	format = (pInfo->channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
+
 	// The frequency of the sampling rate
 	freq = pInfo->rate;
 
 	data = malloc(OGG_BUFFER_SIZE);
-	
+	if (!data)
+	{
+		ov_clear(&oggFile);
+		return NULL;
+	}
+
+	// Reset the variables
+	bitStream = 0;
+	size = 0;
+
 	// Hope OGG_BUFFER_SIZE is large enough for this sample - 1MB should be! Anything more should be streamed.
 	while (size < OGG_BUFFER_SIZE)
 	{
@@ -752,21 +757,19 @@ ALvoid * load_ogg_into_memory(char * szPath, ALenum *inFormat, ALsizei *inSize, 
 #else
 		result = ov_read(&oggFile, data + size, OGG_BUFFER_SIZE - size, 1, 2, 1, &bitStream);
 #endif
-		if((result > 0) || (result == OV_HOLE))		// OV_HOLE is informational
-		{
-			if (result != OV_HOLE) size += result;
-		}
-		else if(result < 0)
+		if (result > 0)
+			size += result;
+		else if (result < 0 && result != OV_HOLE)		// OV_HOLE is informational
 			ogg_error(result);
 		else
 			break;
 	}
-	
+
 	ov_clear(&oggFile);
 
 	*inFormat = format;
 	*inSize = size;
-	*inFreq = freq;	
+	*inFreq = freq;
 	return data;
 }
 
@@ -812,7 +815,11 @@ void play_stream(int sound, stream_data * stream, ALfloat gain)
 	alSourcef(stream->source, AL_GAIN, gain * (stream->type == STREAM_TYPE_MUSIC ? 1.0f : sound_type_data[sound].variant[stream->variant].gain));
 
 	// Load the Ogg file and start the stream
-	stream_ogg_file(file, stream, NUM_STREAM_BUFFERS);
+	if (stream_ogg_file(file, stream, NUM_STREAM_BUFFERS) < 0)
+	{
+		LOG_ERROR("%s:%d stream_ogg_file() returned error so not playing", __FUNCTION__, __LINE__);
+		stream->playing = 0;
+	}
 	stream->sound = sound;
 }
 
@@ -836,7 +843,7 @@ int start_stream(stream_data * stream)
 void stop_stream(stream_data * stream)
 {
 	ALuint buffer;
-	int queued, state = 0, error;
+	int queued = 0, state = 0, error;
 	
 	stream->playing = 0;
 	alGetSourcei(stream->source, AL_SOURCE_STATE, &state);
@@ -844,7 +851,7 @@ void stop_stream(stream_data * stream)
 		alSourceStop(stream->source);
 	alGetSourcei(stream->source, AL_BUFFERS_PROCESSED, &stream->processed);
 	alGetSourcei(stream->source, AL_BUFFERS_QUEUED, &queued);
-	while (queued-- > 0)
+	while ((alGetError() == AL_NO_ERROR) && (queued-- > 0))
 	{
 		alSourceUnqueueBuffers(stream->source, 1, &buffer);
 	}
@@ -939,13 +946,11 @@ void destroy_stream(stream_data * stream)
 	if (stream->cookie != 0)
 	{
 		// Find which of our playing sources matches the handle for this stream
-		LOCK_SOUND_LIST();
 		i = find_sound_source_from_cookie(stream->cookie);
 		if (i >= 0)
 		{
 			stop_sound_source_at_index(i);
 		}
-		UNLOCK_SOUND_LIST();
 	}
 	stream->source = 0;
 	stream->cookie = 0;
@@ -955,7 +960,11 @@ void destroy_stream(stream_data * stream)
 		if (alIsBuffer(stream->buffers[i]))
 			alDeleteBuffers(1, stream->buffers+i);
 	}
-	ov_clear(&stream->stream);
+	if (stream->stream_opened)
+	{
+		ov_clear(&stream->stream);
+		stream->stream_opened = 0;
+	}
 	stream->type = STREAM_TYPE_NONE;
 
 	// Reset the error buffer
@@ -1035,8 +1044,10 @@ int add_stream(int sound, int type, int boundary)
 #ifdef _EXTRA_SOUND_DEBUG
 		printf("add_stream: Eek, there was an error adding this stream! sound: %d\n", sound);
 #endif // _EXTRA_SOUND_DEBUG
+		LOCK_SOUND_LIST();
 		if (type == STREAM_TYPE_MUSIC)
 			destroy_stream(stream);
+		UNLOCK_SOUND_LIST();
 		return 0;
 	}
 	stream->type = type;
@@ -1107,7 +1118,6 @@ int check_for_valid_stream_sound(int tx, int ty, int type)
 
 void check_for_new_streams(int tx, int ty)
 {
-	map_sound_data * cur_map;
 	int i, found_bg = 0, found_crowd = 0;
 	
 	found_bg = check_for_valid_stream_sound(tx, ty, STREAM_TYPE_SOUNDS);
@@ -1137,9 +1147,9 @@ void check_for_new_streams(int tx, int ty)
 #endif //_EXTRA_SOUND_DEBUG
 
 		// We still aren't playing a sound for one type, so check for a map based sound
-		cur_map = &sound_map_data[snd_cur_map];
-		if (cur_map->num_defaults > 0)
+		if ((snd_cur_map > -1) && (sound_map_data[snd_cur_map].num_defaults > 0))
 		{
+			map_sound_data * cur_map = &sound_map_data[snd_cur_map];
 			for (i = 0; i < cur_map->num_defaults; i++)
 			{
 				if (!found_bg && time_of_day_valid(cur_map->boundaries[cur_map->defaults[i]].time_of_day_flags) &&
@@ -1330,7 +1340,9 @@ int check_stream(stream_data * stream, int day_time, int tx, int ty)
 		// If this stream isn't the music stream then destroy it
 		if (stream->type != STREAM_TYPE_MUSIC)
 		{
+			LOCK_SOUND_LIST();
 			destroy_stream(stream);
+			UNLOCK_SOUND_LIST();
 		}
 		return 0;		// Stream is not continuing
 	}
@@ -1346,12 +1358,12 @@ int check_stream(stream_data * stream, int day_time, int tx, int ty)
 		switch (stream->type)
 		{
 			case STREAM_TYPE_MUSIC:
-				if (tx < playlist[list_pos].min_x ||
+				if ((list_pos >= 0) && playlist[list_pos].file_name[0] && (tx < playlist[list_pos].min_x ||
 				   tx > playlist[list_pos].max_x ||
 				   ty < playlist[list_pos].min_y ||
 				   ty > playlist[list_pos].max_y ||
 				   (playlist[list_pos].time != 2 &&
-					playlist[list_pos].time != day_time))
+					playlist[list_pos].time != day_time)))
 				{
 					stream->fade = -1;
 				}
@@ -1431,6 +1443,7 @@ int update_streams(void * dummy)
 			}
 			
 			// Handle the streams
+			LOCK_SOUND_LIST();
 			for (i = 0; i < max_streams; i++)
 			{
 				if (streams[i].playing)
@@ -1462,13 +1475,9 @@ int update_streams(void * dummy)
 						process_stream(&streams[i], gain, &sleep);
 				}
 			}
+			UNLOCK_SOUND_LIST();
 		}
 		UNLOCK_ACTORS_LISTS();
-	}
-	// We are bailing so destroy any remaining streams
-	for (i = 0; i < max_streams; i++)
-	{
-		destroy_stream(&streams[i]);
 	}
 #ifdef _EXTRA_SOUND_DEBUG
 	printf("Exiting streams thread. have_music: %d, music_on: %d, have_sound: %d, sound_on: %d, exit_now: %d\n", have_music, music_on, have_sound, sound_on, exit_now);
@@ -1497,7 +1506,7 @@ void get_map_playlist()
 
 	if(!have_music)return;
 
-	memset (playlist, 0, sizeof(playlist));
+	clear_playlist();
 
 	tmp = strrchr (map_file_name, '/');
 	if (tmp == NULL)
@@ -1533,8 +1542,8 @@ void get_map_playlist()
 					tmp_buf[len]= '\0';
 				}
 			}
-			safe_strncpy (playlist[i].file_name, tmp_buf, sizeof(playlist[i].file_name));
-			playlist[i].file_name[63]= '\0';
+			safe_strncpy (playlist[i].file_name, tmp_buf, MAX_PLAYLIST_FILENAME);
+			playlist[i].file_name[MAX_PLAYLIST_FILENAME-1]= '\0';
 			if (++i >= MAX_PLAYLIST_ENTRIES)
 				break;
 		}
@@ -1554,17 +1563,17 @@ void play_music(int list)
 
 	if(!have_music)return;
 
+	clear_playlist();
+
 	safe_snprintf(list_file_name, sizeof(list_file_name), "music/%d.pll", list);
 	fp=open_file_data(list_file_name, "r");
 	if(!fp)return;
-
-	memset(playlist,0,sizeof(playlist));
 
 	while (1)
 	{
 		if (fscanf (fp, "%254s", strLine) == 1)
 		{
-			my_strncp (playlist[i].file_name, strLine, sizeof (playlist[i].file_name));
+			my_strncp (playlist[i].file_name, strLine, MAX_PLAYLIST_FILENAME);
 			playlist[i].min_x = 0;
 			playlist[i].min_y = 0;
 			playlist[i].max_x = 10000;
@@ -1681,80 +1690,72 @@ void find_next_song(int tx, int ty, int day_time)
 /*****************************
  * SOURCE HANDLING FUNCTIONS *
  *****************************/
-void add_source_to_lists(source_data *pSource)
+static void add_source_to_lists(source_data *pSource)
 {
+	int samples[num_STAGES];
+	int nr_samples = 0;
 	int i;
-	source_list *source_id;
 	source_list *new_source_id;
-	
+
+	for (i = 0; i < num_STAGES; i++)
+	{
+		if (pSource->sample[i] > -1)
+			samples[nr_samples++] = pSource->sample[i];
+	}
+
+	if (nr_samples == 0)
+		return;
+
 	new_source_id = calloc(1, sizeof(source_list));
 	new_source_id->source = pSource->source;
 	new_source_id->next = NULL;
 	new_source_id->last = NULL;
-	
-	for (i = 0; i < num_STAGES; i++)
+
+	for (i = 0; i < nr_samples; i++)
 	{
-		if (pSource->sample[i] > -1)
+		// Get the current list of sources for this sample
+		source_list *source_id = sound_sample_data[samples[i]].sources;
+		if (source_id)
 		{
-			// Get the current list of sources for this sample
-			source_id = sound_sample_data[pSource->sample[i]].sources;
-			if (source_id)
-			{
-				// Find the end of the list and add this source to it
-				while (source_id->next)
-					source_id = source_id->next;
-				source_id->next = new_source_id;
-				new_source_id->last = source_id;
-			}
-			else
-			{
-				// Create this source as the start of the list
-				source_id = new_source_id;
-			}
+			// Find the end of the list and add this source to it
+			while (source_id->next)
+				source_id = source_id->next;
+			source_id->next = new_source_id;
+			new_source_id->last = source_id;
+		}
+		else
+		{
+			// Create this source as the start of the list
+			sound_sample_data[samples[i]].sources = new_source_id;
 		}
 	}
 }
 
-void remove_source_from_lists(source_data *pSource)
+static void remove_source_from_lists(source_data *pSource)
 {
 	int i;
 	source_list *source_id;
-	
+
 	for (i = 0; i < num_STAGES; i++)
 	{
 		if (pSource->sample[i] > -1)
 		{
-			source_id = sound_sample_data[pSource->sample[i]].sources;
-			while (source_id)
+			for (source_id = sound_sample_data[pSource->sample[i]].sources;
+				source_id; source_id = source_id->next)
 			{
 				if (source_id->source == pSource->source)
-				{
-					// Check if there are sources before and after this one in the list
-					// and adjust their last and nexts to remove this one from the list
-					if (source_id->next && source_id->last)
-					{
-						source_id->next->last = source_id->last;
-						source_id->last->next = source_id->next;
-					}
-					else if (source_id->next) // This is the first source
-					{
-						source_id->next->last = NULL;
-					}
-					else if (source_id->last) // This is the last source
-					{
-						source_id->last->next = NULL;
-					}
-					else	// This is the only source, so free the buffer for this sample
-					{
-						release_sample(pSource->sample[i]);
-					}
-					free(source_id);
-					source_id = NULL;
-				}
-				else if (source_id && source_id->next)
-				{
-					source_id = source_id->next;
-				}
+					break;
+			}
+
+			if (source_id)
+			{
+				if (source_id->next)
+					source_id->next->last = source_id->last;
+				if (source_id->last)
+					source_id->last->next = source_id->next;
+				else
+					sound_sample_data[pSource->sample[i]].sources = source_id->next;
+				free(source_id);
 			}
 		}
 	}
@@ -1913,7 +1914,7 @@ int stop_sound_source_at_index(int index)
 int find_sound_source_from_cookie(unsigned int cookie)
 {
 	int n;
-	source_data *pSource = sound_source_data;
+	source_data *pSource;
 
 	if (!cookie)
 		return -1;
@@ -2120,8 +2121,8 @@ int ensure_sample_loaded(char * in_filename)
 	pSample = &sound_sample_data[sample_num];
 
 	// Add the data dir to the front of the input filename
-	strcpy(filename, datadir);
-	strcat(filename, in_filename);
+	safe_strncpy(filename, datadir, sizeof(filename));
+	safe_strcat(filename, in_filename, sizeof(filename));
 
 	// Load the file into memory
 	data = load_ogg_into_memory(filename, &pSample->format, &datasize, &pSample->freq);
@@ -2132,7 +2133,7 @@ int ensure_sample_loaded(char * in_filename)
 		// We have already dumped an error message so just return
 		return -1;
 	}
-			
+
 #ifdef _EXTRA_SOUND_DEBUG
 	printf("Result: File: %s, Format: %d, Size: %d, Freq: %f\n", filename, (int)pSample->format, (int)datasize, (float)pSample->freq);
 #endif //_EXTRA_SOUND_DEBUG
@@ -2464,6 +2465,7 @@ unsigned int add_sound_object_gain(int type, int x, int y, int me, float initial
 	sounds_list[sound_num].cur_gain = -1.0f;		// Make sure we set the gain when we first play the sound
 	cookie = get_next_cookie();
 	sounds_list[sound_num].cookie = cookie;
+	num_sounds++;
 	
 	// Check if we should try to load the samples (sound is enabled)
 	if (inited && have_sound && sound_on)
@@ -2797,6 +2799,8 @@ void stop_all_sounds()
 	ALuint error;
 
 	if (!inited) return;
+	
+	LOCK_SOUND_LIST();
 
 #ifdef _EXTRA_SOUND_DEBUG
 	printf("Stopping all individual sounds\n");
@@ -2826,6 +2830,8 @@ void stop_all_sounds()
 			destroy_stream(&streams[i]);
 		}
 	}
+
+	UNLOCK_SOUND_LIST();
 
 	if ((error=alGetError()) != AL_NO_ERROR)
 	{
@@ -3900,7 +3906,7 @@ void clear_sound_data()
 	walking_default = -1;
 	for (i = 0; i < MAX_SOUND_MAPS; i++)
 	{
-		sound_map_data[i].id = 0;
+		sound_map_data[i].id = -1;
 		sound_map_data[i].name[0] = '\0';
 		sound_map_data[i].num_boundaries = 0;
 		for (j = 0; j < MAX_SOUND_MAP_BOUNDARIES; j++)
@@ -3952,7 +3958,7 @@ void clear_sound_data()
 		sound_tile_data[i].num_sounds = 0;
 		sound_tile_data[i].default_sound = -1;
 	}
-	for (i = 0; i < 9; i++)
+	for (i = 0; i < MAX_SERVER_SOUNDS; i++)
 	{
 		server_sound[i] = -1;
 	}
@@ -3980,11 +3986,13 @@ void clear_sound_data()
 	sound_num_items = 0;
 	sound_num_tile_types = 0;
 	num_sound_warnings = 0;
+	num_sound_files = 0;
 }
 
 /* done once at start up to create the sound list mutex */
 void initial_sound_init(void)
 {
+	size_t i, j, k;
 	sound_list_mutex = SDL_CreateMutex();
 	if (!sound_list_mutex)
 	{
@@ -3992,7 +4000,196 @@ void initial_sound_init(void)
 		SDL_Quit();
 		exit(1);
 	}
+
+	/* create arrays and do minimum initisation - memsetting to zero is not good enough.
+	 * These arrays were previous static and so valgrind could not determine if there were
+	 * memory access errors, this way we can work through them.  How it worked before is
+	 * unknown.  TO DO: Need to dedupe this code with clear_sound_data()....
+	 */
+
+	streams = (stream_data *)malloc(sizeof(stream_data) * MAX_STREAMS);
+	for (i=0; i<MAX_STREAMS; i++)
+	{
+		streams[i].type = STREAM_TYPE_NONE;
+		streams[i].sound = -1;
+		streams[i].source = 0;
+		streams[i].cookie = 0;
+		memset(&streams[i].buffers, 0, sizeof(ALuint) * NUM_STREAM_BUFFERS);
+		memset(&streams[i].stream, 0, sizeof(OggVorbis_File));
+		streams[i].stream_opened = 0;
+		streams[i].fade_length = 10;
+		streams[i].boundary = NULL;
+		streams[i].info = NULL;
+		streams[i].fade = streams[i].processed = streams[i].playing = streams[i].variant = streams[i].is_default = 0;
+	}
+
+	sounds_list = (sound_loaded *)malloc(sizeof(sound_loaded) * MAX_BUFFERS * 2);
+	for (i=0; i<MAX_BUFFERS * 2; i++)
+	{
+		sounds_list[i].sound = sounds_list[i].variant = sounds_list[i].x = sounds_list[i].y = -1;
+		sounds_list[i].loaded = sounds_list[i].playing = sounds_list[i].lifetime = 0;
+		sounds_list[i].base_gain = sounds_list[i].cur_gain = 0.0f;
+		sounds_list[i].cookie = 0;
+	}
+
+	sound_source_data = (source_data*)malloc(sizeof(source_data) * ABS_MAX_SOURCES);
+	for (i=0; i<ABS_MAX_SOURCES; i++)
+	{
+		source_data* p = &sound_source_data[i];
+		p->source = 0;
+		p->priority = p->play_duration = 0;
+		p->current_stage = STAGE_UNUSED;
+		p->loaded_sound = -1;
+		p->cookie = 0;
+		for (j=0; j<num_STAGES; j++)
+			p->sample[j] = -1;
+	}
+
+	sound_type_data = (sound_type*)malloc(sizeof(sound_type) * MAX_SOUNDS);
+	for (i=0; i<MAX_SOUNDS; i++)
+	{
+		sound_type* p = &sound_type_data[i];
+		p->name[0] = '\0';
+		p->num_variants = p->stereo = p->fadeout_time = p->echo_delay = 0;
+		p->echo_volume = 50;
+		p->distance = 100.0f;
+		p->time_of_the_day_flags = 0xffff;
+		p->type = SOUNDS_NONE;
+		p->positional = p->loops = 1;
+		p->priority = p->loops = 50;
+		for (j=0; j<MAX_SOUND_VARIANTS; j++)
+		{
+			for (k=0; k<num_STAGES; k++)
+				p->variant[j].part[k] = NULL;
+			p->variant[j].gain = 0.0f;
+		}
+	}
+
+	sound_sample_data = (sound_sample*)malloc(sizeof(sound_sample) * MAX_BUFFERS);
+	for (i=0; i<MAX_BUFFERS; i++)
+	{
+		sound_sample* p = &sound_sample_data[i];
+		p->sources = NULL;
+		p->buffer = 0;
+		p->format = 0;
+		p->size = 0;
+		p->freq = 0.0;
+		p->channels = p->bits = 0;
+		p->length = 0;
+	}
+
+	// as clear_sound_data()
+	sound_files = (sound_file*)malloc(sizeof(sound_file) * MAX_SOUND_FILES);
+	for (i=0; i<MAX_SOUND_FILES; i++)
+	{
+		sound_files[i].file_path[0] = '\0';
+		sound_files[i].sample_num = -1;
+	}
+
+	sound_background_defaults = (background_default*)malloc(sizeof(background_default) * MAX_BACKGROUND_DEFAULTS);
+	for (i=0; i<MAX_BACKGROUND_DEFAULTS; i++)
+	{
+		sound_background_defaults[i].time_of_day_flags = 0xffff;
+		sound_background_defaults[i].map_type = 0;
+		sound_background_defaults[i].sound = -1;
+	}
+
+	sound_map_data = (map_sound_data*)malloc(sizeof(map_sound_data) * MAX_SOUND_MAPS);
+	for (i=0; i<MAX_SOUND_MAPS; i++)
+	{
+		sound_map_data[i].num_boundaries = sound_map_data[i].num_defaults = sound_map_data[i].num_walk_boundaries = 0;
+		sound_map_data[i].id = -1;
+	}
+
+	// as clear_sound_data()
+	sound_effect_data = (effect_sound_data*)malloc(sizeof(effect_sound_data) * MAX_SOUND_EFFECTS);
+	for (i=0; i<MAX_SOUND_EFFECTS; i++)
+	{
+		sound_effect_data[i].id = 0;
+		sound_effect_data[i].sound = -1;
+	}
+
+	// as clear_sound_data()
+	sound_particle_data = (particle_sound_data*)malloc(sizeof(particle_sound_data) * MAX_SOUND_PARTICLES);
+	for (i=0; i<MAX_SOUND_PARTICLES; i++)
+	{
+		sound_particle_data[i].file[0] = '\0';
+		sound_particle_data[i].sound = -1;
+	}
+
+	// as clear_sound_data()
+	sound_item_data = (item_sound_data*)malloc(sizeof(item_sound_data) * MAX_SOUND_ITEMS);
+	for (i=0; i<MAX_SOUND_ITEMS; i++)
+	{
+		for (j = 0; j < MAX_ITEM_SOUND_IMAGE_IDS; j++)
+			sound_item_data[i].image_id[j] = -1;
+		sound_item_data[i].num_imageids = 0;
+		sound_item_data[i].sound = -1;
+	}
+
+	// as clear_sound_data()
+	sound_tile_data = (tile_sound_data*)malloc(sizeof(tile_sound_data) * MAX_SOUND_TILE_TYPES);
+	for (i=0; i<MAX_SOUND_TILE_TYPES; i++)
+	{
+		for (j = 0; j < MAX_SOUND_TILES; j++)
+		{
+			sound_tile_data[i].tile_type[j] = -1;
+		}
+		sound_tile_data[i].num_tile_types = 0;
+		for (j = 0; j < MAX_SOUND_TILES_SOUNDS; j++)
+		{
+			sound_tile_data[i].sounds[j].actor_types[0] = '\0';
+			sound_tile_data[i].sounds[j].sound = -1;
+		}
+		sound_tile_data[i].num_sounds = 0;
+		sound_tile_data[i].default_sound = -1;
+	}
+
+	// as clear_sound_data()
+	server_sound = (int*)malloc(sizeof(int) * MAX_SERVER_SOUNDS);
+	for (i=0; i<MAX_SERVER_SOUNDS; i++)
+		server_sound[i] = -1;
+
+	// as clear_sound_data()
+	sound_spell_data = (int*)malloc(sizeof(int) * NUM_ACTIVE_SPELLS);
+	for (i=0; i<NUM_ACTIVE_SPELLS; i++)
+		sound_spell_data[i] = -1;
+
+	// as clear_sound_data()
+	warnings_list = (sound_warnings*)malloc(sizeof(sound_warnings) * MAX_SOUND_WARNINGS);
+	for (i = 0; i < MAX_SOUND_WARNINGS; i++)
+	{
+		warnings_list[i].sound = -1;
+		warnings_list[i].string[0] = '\0';
+	}
+
+	// NOT as clear_sound_data()
+	playlist = (playlist_entry*)malloc(sizeof(playlist_entry) * MAX_PLAYLIST_ENTRIES);
+	clear_playlist();
+
+	// as clear_sound_data()
+	num_types = 0;
+	num_samples = 0;
+	sound_num_background_defaults = 0;
+	sound_num_maps = 0;
+	sound_num_effects = 0;
+	sound_num_particles = 0;
+	sound_num_items = 0;
+	sound_num_tile_types = 0;
+	num_sound_warnings = 0;
+	num_sound_files = 0;
+
 	return;
+}
+
+static void clear_playlist(void)
+{
+	size_t i;
+	for (i=0; i<MAX_PLAYLIST_ENTRIES; i++)
+	{
+		playlist[i].file_name[0] = '\0';
+		playlist[i].min_x = playlist[i].max_x = playlist[i].min_y = playlist[i].max_y = playlist[i].time = 0;
+	}
 }
 
 /* done once at exit to delete the sound list mutex */
@@ -4000,6 +4197,22 @@ void final_sound_exit(void)
 {
 	SDL_DestroyMutex(sound_list_mutex);
 	sound_list_mutex = NULL;
+	free(streams);
+	free(sounds_list);
+	free(sound_source_data);
+	free(sound_type_data);
+	free(sound_sample_data);
+	free(sound_files);
+	free(sound_background_defaults);
+	free(sound_map_data);
+	free(sound_effect_data);
+	free(sound_particle_data);
+	free(sound_item_data);
+	free(sound_tile_data);
+	free(server_sound);
+	free(sound_spell_data);
+	free(warnings_list);
+	free(playlist);
 }
 
 void init_sound()
@@ -4030,12 +4243,12 @@ void init_sound()
 	}
 	device_list = (char*) alcGetString(NULL, ALC_DEVICE_SPECIFIER);
 	parse_snd_devices(device_list, sound_devices);
-	LOG_ERROR("Sound devices detected: %s\n", sound_devices);
+	LOG_INFO("Sound devices detected: %s\n", sound_devices);
 
 	// If you want to use a specific device, use, for example:
 	// device = alcOpenDevice((ALCchar*) "DirectSound3D")
 	// NULL makes it use the default device
-	LOG_ERROR("Soundcard device attempted: %s", sound_device);
+	LOG_INFO("Soundcard device attempted: %s", sound_device);
 	device = alcOpenDevice((ALCchar*) sound_device);
 	if ((error = alcGetError(device)) != AL_NO_ERROR || !device)
 	{
@@ -4055,7 +4268,7 @@ void init_sound()
 			LOG_ERROR("Soundcard device specified (%s) failed. Using default device: %s", sound_device, alcGetString(device, ALC_DEVICE_SPECIFIER));
 		}
 	} else {
-		LOG_ERROR("Soundcard device in-use: %s", alcGetString(device, ALC_DEVICE_SPECIFIER));
+		LOG_INFO("Soundcard device in-use: %s", alcGetString(device, ALC_DEVICE_SPECIFIER));
 	}
 
 	context = alcCreateContext( device, NULL );
@@ -4177,17 +4390,17 @@ void destroy_sound()
 	}
 	inited = have_sound = have_music = 0;
 
-	for (i = 0; i < MAX_STREAMS; i++)
-	{
-		destroy_stream(&streams[i]);
-	}
 	if (sound_streams_thread != NULL)
 	{
 		SDL_WaitThread(sound_streams_thread, NULL);
 		sound_streams_thread = NULL;
 	}
-	// Remove physical elements (sources and buffers)
 	LOCK_SOUND_LIST();
+	for (i = 0; i < MAX_STREAMS; i++)
+	{
+		destroy_stream(&streams[i]);
+	}
+	// Remove physical elements (sources and buffers)
 	for (i = 0; i < ABS_MAX_SOURCES; i++)
 	{
 		if (alIsSource(sound_source_data[i].source) == AL_TRUE)
@@ -4313,7 +4526,7 @@ int add_to_sound_warnings_list(const char * text)
 			{
 				// Excellent, a free spot
 				warnings_list[i].sound = snd;
-				safe_strncpy(warnings_list[i].string, right, sizeof(warnings_list[i].string));
+				safe_strncpy(warnings_list[i].string, right, MAX_SND_WARNING_STRING);
 				num_sound_warnings++;
 				return 1;
 			}
@@ -4394,7 +4607,7 @@ void parse_server_sounds()
 	// Parse the list of sounds according to client_serv.h and map them to our sound defs
 	//
 	// NOTE: This must be kept up-to-date with client_serv.h for it to be any use!!
-	for (i = 0; i <= 9; i++)
+	for (i = 0; i < MAX_SERVER_SOUNDS; i++)
 	{
 		switch(i)
 		{
@@ -4450,7 +4663,7 @@ sound_file * init_sound_file(const char * content)
 		return NULL;
 	}
 	// Everything is ok so load it
-	safe_strncpy(sound_files[i].file_path, content, sizeof(sound_files[i].file_path));
+	safe_strncpy(sound_files[i].file_path, content, MAX_FILENAME_LENGTH);
 	num_sound_files++;
 	return &sound_files[i];
 }
@@ -4464,8 +4677,8 @@ sound_file * load_sound_part(sound_file *pPart, SOUND_STAGE stage, const char * 
 
 	if (!pPart || !strcasecmp(pPart->file_path, ""))
 	{
-		strcpy(filename, datadir);
-		strcat(filename, content);
+		safe_strncpy(filename, datadir, sizeof(filename));
+		safe_strcat(filename, content, sizeof(filename));
 		if (file_exists(filename))
 		{
 			pPart = init_sound_file(content);
@@ -5080,7 +5293,7 @@ void parse_map_sound(const xmlNode *inNode)
 // This block ^^ is a temporary fix for detecting 2d and 3d objects. It can be removed once the other functionality is coded.
 				else
 				{
-					LOG_ERROR("%s: Boundary definition expected. Found: %s", snd_config_error, attributeNode->name);
+					LOG_ERROR("%s: Boundary definition expected. Found: %s", snd_config_error, boundaryNode->name);
 				}
 			}
 			else if (boundaryNode->type == XML_ENTITY_REF_NODE)
@@ -5575,7 +5788,7 @@ void load_sound_config_data (const char *file)
 	if (!el_file_exists(file))
 		return;
 
-	if ((doc = xmlReadFile(file, NULL, 0)) == NULL)
+	if ((doc = xmlReadFile(file, NULL, XML_PARSE_NOENT)) == NULL)
 	{
 		char str[200];
 		safe_snprintf(str, sizeof(str), snd_config_open_err_str, file);
@@ -5602,7 +5815,7 @@ void load_sound_config_data (const char *file)
 		load_sound_warnings_list(SOUND_WARNINGS_PATH);
 	}
 
-	xmlFree(doc);
+	xmlFreeDoc(doc);
 #ifdef DEBUG
 	print_sound_types();
 #endif // DEBUG
@@ -5751,15 +5964,15 @@ void print_sound_types()
 	}
 
 	printf("\nSPELL EFFECT SOUND DATA\n===============\n");
-	printf("There are 10 spell effects:\n");
-	for (i = 0; i <= 9; ++i)
+	printf("There are %d spell effects:\n", NUM_ACTIVE_SPELLS);
+	for (i = 0; i <NUM_ACTIVE_SPELLS; ++i)
 	{
 		printf("Spell Effect Sound: %d = %d\n", i, sound_spell_data[i]);
 	}
 
 	printf("\nSERVER SOUNDS\n===============\n");
-	printf("There are 10 server sounds:\n");
-	for (i = 0; i <= 9; ++i)
+	printf("There are %d server sounds:\n", MAX_SERVER_SOUNDS);
+	for (i = 0; i <MAX_SERVER_SOUNDS; ++i)
 	{
 		printf("Server Sound: %d = %d\n", i, server_sound[i]);
 	}

@@ -46,6 +46,8 @@ namespace cm
 			int bool_line(size_t line_index, int *control_var, const char *config_name);
 			int grey_line(size_t line_index, bool is_grey);
 			void show_lines(size_t my_id);
+			void set_data(void *data) { data_ptr = data; }
+			void *get_data(void) const { return data_ptr; }
 
 		private:
 			int resize(void);
@@ -55,6 +57,7 @@ namespace cm
 			int opened_mouse_x, opened_mouse_y;
 			int (*handler)(window_info *, int, int, int, int);
 			void (*pre_show_handler)(window_info *, int, int, int, window_info *);
+			void *data_ptr;
 			int width, height;
 			int selection;
 			bool menu_has_bools;
@@ -118,6 +121,8 @@ namespace cm
 			bool valid(size_t cm_id) const { return cm_id<menus.size() && menus[cm_id]; }
 			size_t window_shown(void) const;
 			void showinfo(void);
+			void *get_data(size_t cm_id) const { if (!valid(cm_id)) return 0; return menus[cm_id]->get_data(); }
+			void set_data(size_t cm_id, void *data) { if (valid(cm_id)) menus[cm_id]->set_data(data); }
 
 		private:
 			class Region	//  Wrapper for window region activation area.
@@ -347,7 +352,7 @@ namespace cm
 			{
 				window_info *win = window_info_from_id(window_id);
 				widget_list *wid = widget_find(window_id, it->second.widget_id);
-				assert(wid!=NULL || win!=NULL);
+				assert(wid!=NULL && win!=NULL);
 				if ((mouse_x > win->cur_x + wid->pos_x) && (mouse_x <= win->cur_x + wid->pos_x + wid->len_x) &&
 		    		(mouse_y > win->cur_y + wid->pos_y) && (mouse_y <= win->cur_y + wid->pos_y + wid->len_y))
 					return show_direct(it->second.cm_id, window_id, it->second.widget_id);
@@ -464,7 +469,7 @@ namespace cm
 	
 	// Constructor - set default values for new menu
 	Menu::Menu(const char *menu_list, int (*handler)(window_info *, int, int, int, int))
-		: border(5), text_border(5), line_sep(3), zoom(0.8), selection(-1), menu_has_bools(false)
+		: border(5), text_border(5), line_sep(3), zoom(0.8), data_ptr(0), selection(-1), menu_has_bools(false)
 	{
 		set(menu_list, handler);
 		pre_show_handler = 0;
@@ -606,7 +611,7 @@ namespace cm
 
 		// parent_win will be NULL if we don't have one
 		window_info *parent_win = window_info_from_id(container.get_active_window_id());
-		
+
 		// copy any parent window opacity to the context menu
 		if (parent_win != NULL && (parent_win->flags & ELW_SWITCHABLE_OPAQUE))
 			windows_list.window[cm_window_id].opaque = parent_win->opaque;
@@ -825,6 +830,8 @@ extern "C" int cm_remove_widget(int window_id, int widget_id) { return cm::conta
 extern "C" void cm_showinfo(void) { cm::container.showinfo(); }
 extern "C" int cm_valid(size_t cm_id) { if (cm::container.valid(cm_id)) return 1; else return 0; }
 extern "C" size_t cm_window_shown(void) { return cm::container.window_shown(); }
+extern "C" void *cm_get_data(size_t cm_id) { return cm::container.get_data(cm_id); }
+extern "C" void cm_set_data(size_t cm_id, void *data) { cm::container.set_data(cm_id, data); }
 
 
 
@@ -976,7 +983,7 @@ extern "C" int cm_test_window(char *text, int len)
 		cm_test_reg_menu = cm_create("Region 1\nRegion 2\n", cm_test_menu_handler);
 		cm_test_wid_menu = cm_create("Widget 1\n--\nWidget 3\nWidget 4\nWidget 5\nWidget 6\n", cm_test_menu_handler);
 		cm_test_dir_menu = cm_create("Direct 1\nDirect 2\n", cm_test_menu_handler);
-		printf("Created menus window=%d region=%d widget=%d direct=%d\n",
+		printf("Created menus window=%lu region=%lu widget=%lu direct=%lu\n",
 			cm_test_win_menu, cm_test_reg_menu, cm_test_wid_menu, cm_test_dir_menu);
 		
 		printf("Replacing window menu cm_set()=%d\n", cm_set(cm_test_win_menu, "Window 1\nWindow 2\n--\nGrey me...\nGrey above\n", cm_test_menu_handler));

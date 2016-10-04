@@ -171,6 +171,24 @@ typedef enum actor_types_type
 /*! @} */
 
 /*!
+ * \name Eyes colors
+ */
+/*! @{ */
+#define EYES_BROWN	0
+#define EYES_DARK_BROWN	1
+#define EYES_BROWN_RED	2
+#define EYES_LIGHT_BLUE	3
+#define EYES_BLUE	4
+#define EYES_DARK_BLUE	5
+#define EYES_LIGHT_GREEN	6
+#define EYES_GREEN	7
+#define EYES_DARK_GREEN	8
+#define EYES_LAVENDER	9
+#define EYES_VIOLET	10
+#define EYES_GOLD	11
+/*! @} */
+
+/*!
  * \name Boots colors
  */
 /*! @{ */
@@ -699,6 +717,9 @@ typedef enum
 
 #define DO_EMOTE 70
 
+/* send: 16 bit buff bit-mask (only one set bit), server responds with SEND_BUFF_DURATION */
+#define GET_BUFF_DURATION 71
+
 #define LOG_IN 140
 #define CREATE_CHAR 141
 
@@ -810,6 +831,8 @@ typedef enum
 #define QUEST_FINISHED 94
 /* sent: 5 x 32 bit integers, each active bit is an achievement the last "You see: name" player has */
 #define SEND_ACHIEVEMENTS 95
+/* sent: 1 single byte buff duration, time remaining in seconds */
+#define SEND_BUFF_DURATION 96
 
 #define SEND_WEATHER 100
 

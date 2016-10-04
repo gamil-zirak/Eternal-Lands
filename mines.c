@@ -26,7 +26,7 @@ mine_types mine_defs[MAX_MINE_DEFS];
 mine mine_list[NUM_MINES];
 int num_mine_defs = 0;
 
-char * get_mine_e3d(mine_type)
+static char * get_mine_e3d(int mine_type)
 {
 	int i;
 	// Search the array for the required mine type
@@ -229,6 +229,6 @@ void load_mines_config()
 		parse_mine_defs(root);
 	}
 
-	xmlFree(doc);
+	xmlFreeDoc(doc);
 }
 

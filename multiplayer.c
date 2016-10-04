@@ -40,6 +40,7 @@
 #include "spells.h"
 #include "storage.h"
 #include "trade.h"
+#include "trade_log.h"
 #include "translate.h"
 #include "update.h"
 #include "weather.h"
@@ -73,7 +74,9 @@ int in_data_used=0;
 int tcp_out_loc= 0;
 int previously_logged_in= 0;
 time_t last_heart_beat;
+time_t last_save_time;
 int always_pathfinding = 0;
+int mixed_message_filter = 0;
 char inventory_item_string[300] = {0};
 size_t inventory_item_string_id = 0;
 
@@ -92,6 +95,9 @@ int server_time_stamp= 0;
 int client_time_stamp= 0;
 int client_server_delta_time= 0;
 
+/* if non-zero, we are testing the connection, waiting for a return ping from the server */
+static Uint32 testing_server_connection_time = 0;
+
 int yourself= -1;
 
 int last_sit= 0;
@@ -100,6 +106,26 @@ int last_turn_around = 0;
 Uint32 next_second_time = 0;
 short real_game_minute = 0;
 short real_game_second = 0;
+
+/* real_game_second_valid set when we know the server seconds */
+static short real_game_second_valid = 0;
+int is_real_game_second_valid(void) { return real_game_second_valid; }
+void set_real_game_second_valid(void) { real_game_second_valid = 1; }
+
+/* get the current game time in seconds */
+Uint32 get_game_time_sec(void)
+{
+	return real_game_minute * 60 + real_game_second;
+}
+
+/* get the difference between the supplied time and current game time, allowing for wrap round */
+Uint32 diff_game_time_sec(Uint32 ref_time)
+{
+	Uint32 curr_game_time = get_game_time_sec();
+	if (ref_time > curr_game_time)
+		curr_game_time += 6 * 60 * 60;
+	return curr_game_time - ref_time;
+}
 
 
 /*
@@ -169,11 +195,14 @@ void create_tcp_out_mutex()
 	tcp_out_data_mutex = SDL_CreateMutex();
 }
 
-void destroy_tcp_out_mutex()
+void cleanup_tcp()
 {
 	SDL_DestroyMutex(tcp_out_data_mutex);
-
 	tcp_out_data_mutex = 0;
+	SDLNet_TCP_Close(my_socket);
+	SDLNet_FreeSocketSet(set);
+	set=NULL;
+	SDLNet_Quit();
 }
 
 #ifdef DEBUG
@@ -521,7 +550,8 @@ void connect_to_server()
 
 	//clear out info
 	clear_waiting_for_questlog_entry();
-	harvesting = 0;
+	clear_today_is_special_day();
+	clear_now_harvesting();
 	last_heart_beat= time(NULL);
 	send_heart_beat();	// prime the hearbeat to prevent some stray issues when there is lots of lag
 	hide_window(trade_win);
@@ -565,7 +595,7 @@ void send_login_info()
 }
 
 
-void send_new_char(char * user_str, char * pass_str, char skin, char hair, char shirt, char pants, char boots,char head, char type)
+void send_new_char(char * user_str, char * pass_str, char skin, char hair, char eyes, char shirt, char pants, char boots,char head, char type)
 {
 	int i,j,len;
 	unsigned char str[120];
@@ -586,8 +616,8 @@ void send_new_char(char * user_str, char * pass_str, char skin, char hair, char 
 	str[i+j+6]= boots;
 	str[i+j+7]= type;
 	str[i+j+8]= head;
-
-	len= i+j+9;
+	str[i+j+9]= eyes;
+	len= i+j+10;
 	if(my_tcp_send(my_socket,str,len)<len) {
 		//we got a nasty error, log it
 	}
@@ -637,12 +667,11 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 					// if we're expecting a quest entry, this will be it
 					if (waiting_for_questlog_entry())
 					{
-						char *cur_npc_name = (char *)malloc(sizeof(npc_name));
+						char cur_npc_name[sizeof(npc_name)];
 						safe_strncpy2(cur_npc_name, (char *)npc_name, sizeof(npc_name), sizeof(npc_name));
 						safe_strncpy((char *)npc_name, "<None>", sizeof(npc_name));
 						add_questlog((char*)text_buf, len);
 						safe_strncpy2((char *)npc_name, cur_npc_name, sizeof(npc_name), sizeof(npc_name));
-						free(cur_npc_name);
 					}
 				}
 
@@ -751,6 +780,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				real_game_minute= SDL_SwapLE16(*((short *)(in_data+3)));
 				real_game_minute %= 360;
 				real_game_second = 0;
+				set_real_game_second_valid();
 				next_second_time = cur_time+1000;
 				if (real_game_minute < last_real_game_minute)
 					invalidate_date();
@@ -790,16 +820,19 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				load_server_markings();
 				load_questlog();
 				load_counters();
+				load_channel_colors();
 				send_video_info();
 				previously_logged_in=1;
+				last_save_time= time(NULL);
 
-			// Print the game date cos its pretty (its also needed for SKY_FPV to set moons for signs, wonders, times and seasons)
-			command_date("", 0);
-			// print the game time in order to get the seconds for the SKY_FPV feature
-			command_time("", 0);
-			safe_snprintf(str, sizeof(str), "%c#il", RAW_TEXT);
-		        my_tcp_send(my_socket, (Uint8*)str, strlen(str+1)+1);
-			break;
+				// Print the game date cos its pretty (its also needed for SKY_FPV to set moons for signs, wonders, times and seasons)
+				command_date("", 0);
+				// print the game time in order to get the seconds for the SKY_FPV feature
+				command_time("", 0);
+				// print the invading monster count
+				safe_snprintf(str, sizeof(str), "%c#il", RAW_TEXT);
+				my_tcp_send(my_socket, (Uint8*)str, strlen(str+1)+1);
+				break;
 			}
 
 		case HERE_YOUR_STATS:
@@ -867,18 +900,21 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				  break;
 				}
 				items = in_data[3];
-				if (data_length - 4  == items * 8 )
+
+				// only consider changing item_uid_enabled if we can be sure
+				if ((items > 0) && ((data_length - 4) > 0))
 				{
-					item_uid_enabled = 0;
+					if (data_length - 4 == items * 8 )
+						item_uid_enabled = 0;
+					else if (data_length - 4 == items * 10 )
+						item_uid_enabled = 1;
+					//printf("HERE_YOUR_INVENTORY item_uid_enabled=%d\n", item_uid_enabled);
+				}
+
+				if (item_uid_enabled == 0)
 					plen = 8;
-				}
-				else if (data_length - 4  == items * 10 )
-				{
-					item_uid_enabled = 1;
-					plen = 10;
-				}
 				else
-				plen = 8;
+					plen = 10;
 
 				if (data_length - 4 != items * plen)
 				{
@@ -888,6 +924,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				inventory_item_string[0]=0;
 				inventory_item_string_id=0;
 				get_your_items(in_data+3);
+				trade_post_inventory();
 			}
 			break;
 
@@ -930,7 +967,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				safe_strncpy2(inventory_item_string, (const char *)&in_data[3], sizeof(inventory_item_string)-1, data_length - 3);
 				inventory_item_string[sizeof(inventory_item_string)-1] = 0;
 				inventory_item_string_id++;
-				if(!(get_show_window(items_win)||get_show_window(manufacture_win)||get_show_window(trade_win)))
+				if(!(mixed_message_filter||get_show_window(items_win)||get_show_window(manufacture_win)||get_show_window(trade_win)))
 					{
 						put_text_in_buffer(CHAT_SERVER, &in_data[3], data_length-3);
 					}
@@ -1013,7 +1050,13 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				  LOG_WARNING("CAUTION: Possibly forged CHANGE_MAP packet received.\n");
 				  break;
 				}
-				safe_strncpy2(mapname, (char*)in_data + 3, sizeof(mapname), data_length - 3);
+				if(in_data[3] == '.' && in_data[4] == '/')
+				{
+					safe_strncpy2(mapname, (char*)in_data + 3, sizeof(mapname), data_length - 3);
+				} else 
+				{
+					safe_snprintf(mapname, sizeof(mapname), "./%s", (char*)in_data + 3);
+				}
 				change_map(mapname);
 			}
 			break;
@@ -1177,7 +1220,10 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				} else {
 					severity= 1.0f;
 				}
-				weather_set_area(0, tile_map_size_x*1.5, tile_map_size_y*1.5, 100000.0, 1, severity, in_data[3]);
+				if (show_weather)
+				{
+					weather_set_area(0, tile_map_size_x*1.5, tile_map_size_y*1.5, 100000.0, 1, severity, in_data[3]);
+				}
 			}
 			break;
 
@@ -1206,9 +1252,12 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 					LOG_WARNING("CAUTION: Possibly forged THUNDER packet received.\n");
 					break;
 				}
-				weather_add_lightning(rand()%5,
-                                      -camera_x + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0),
-                                      -camera_y + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0));
+				if (show_weather)
+				{
+					weather_add_lightning(rand()%5,
+                                      		-camera_x + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0),
+                                      		-camera_y + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0));
+				}
 			}
 			break;
 
@@ -1244,6 +1293,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				  LOG_WARNING("CAUTION: Possibly forged SYNC_CLOCK packet received.\n");
 				  break;
 				}
+				testing_server_connection_time = 0;
 				safe_snprintf(str, sizeof(str), "%s: %i ms",server_latency, SDL_GetTicks()-SDL_SwapLE32(*((Uint32 *)(in_data+3))));
 				LOG_TO_CONSOLE(c_green1,str);
 			}
@@ -1485,6 +1535,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 		case GET_TRADE_EXIT:
 			{
 				hide_window(trade_win);
+				trade_exit();
 			}
 			break;
 
@@ -1806,6 +1857,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				  break;
 				}
 				get_storage_items(in_data+3, data_length-3);
+				trade_post_storage();
 			}
 			break;
 
@@ -2160,6 +2212,14 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				free(achievement_data);
 			}
 			break;
+		case SEND_BUFF_DURATION:
+			{
+				if (data_length <= 3)
+					LOG_WARNING("CAUTION: Possibly forged/invalid SEND_BUFF_DURATION packet received.\n");
+				else
+					here_is_a_buff_duration((Uint8)in_data[3]);
+				break;
+			}
 		default:
 			{
 				// Unknown packet type??
@@ -2171,6 +2231,49 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 			break;
 		}
 }
+
+
+/* Set the state to *disconnected from the server*, showing messages and recording time. */
+void enter_disconnected_state(char *message)
+{
+	char str[256];
+	short tgm = real_game_minute;
+	safe_snprintf(str, sizeof(str), "<%1d:%02d>: %s [%s]", tgm/60, tgm%60,
+		disconnected_from_server, (message != NULL) ?message : "Grue?");
+	LOG_TO_CONSOLE(c_red2, str);
+	LOG_TO_CONSOLE(c_red2, alt_x_quit);
+	disconnected = 1;
+#ifdef NEW_SOUND
+	stop_all_sounds();
+	do_disconnect_sound();
+#endif // NEW_SOUND
+	disconnect_time = SDL_GetTicks();
+}
+
+
+/* Initiates a test for server connection, the client will enter the disconnected state if needed */
+void start_testing_server_connection(void)
+{
+	LOG_TO_CONSOLE(c_green1, test_server_connect_str);
+	testing_server_connection_time = SDL_GetTicks();
+	command_ping(NULL,0);
+}
+
+
+/* Called from the main thread 500 ms timer, check if testing server connection */
+void check_if_testing_server_connection(void)
+{
+	if (testing_server_connection_time > 0)
+	{
+		Uint32 current_time = SDL_GetTicks();
+		if ((current_time - testing_server_connection_time) > 10000)
+		{
+			testing_server_connection_time = 0;
+			enter_disconnected_state(server_connect_test_failed_str);
+		}
+	}
+}
+
 
 static void process_data_from_server(queue_t *queue)
 {
@@ -2204,18 +2307,9 @@ static void process_data_from_server(queue_t *queue)
 				}
 			}
 			else { /* sizeof (tcp_in_data) - 3 < size */
-				LOG_TO_CONSOLE(c_red2, packet_overrun);
-
-				LOG_TO_CONSOLE(c_red2, disconnected_from_server);
-				LOG_TO_CONSOLE(c_red2, alt_x_quit);
 				LOG_ERROR ("Packet overrun, protocol = %d, size = %u\n", pData[0], size);
 				in_data_used = 0;
-				disconnected = 1;
-#ifdef NEW_SOUND
-				stop_all_sounds();
-				do_disconnect_sound();
-#endif // NEW_SOUND
-				disconnect_time = SDL_GetTicks();
+				enter_disconnected_state(packet_overrun);
 			}
 		} while (3 <= in_data_used);
 
@@ -2250,21 +2344,8 @@ int get_message_from_server(void *thread_args)
 			process_data_from_server(queue);
 		}
 		else { /* 0 >= received (EOF or some error) */
-			char str[256];
-			short tgm = real_game_minute;
-			if (received)
-				safe_snprintf(str, sizeof(str), "<%1d:%02d>: %s: [%s]", tgm/60, tgm%60, disconnected_from_server, SDLNet_GetError());
-		 	else
-				safe_snprintf(str, sizeof(str), "<%1d:%02d>: %s", tgm/60, tgm%60, disconnected_from_server);
-			LOG_TO_CONSOLE(c_red2, str);
-			LOG_TO_CONSOLE(c_red2, alt_x_quit);
 			in_data_used = 0;
-			disconnected = 1;
-#ifdef NEW_SOUND
-			stop_all_sounds();
-			do_disconnect_sound();
-#endif // NEW_SOUND
-			disconnect_time = SDL_GetTicks();
+			enter_disconnected_state((received)?SDLNet_GetError():NULL);
 		}
 	}
 

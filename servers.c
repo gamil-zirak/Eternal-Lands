@@ -114,7 +114,9 @@ void load_server_list(const char *filename)
 	if (f == NULL)
 	{
 		// Error, this is a problem!
-		LOG_ERROR("Fatal error: %s file missing!", filename);
+		const char *err_message = "Fatal error: %s file missing!\n";
+		LOG_ERROR(err_message, filename);
+		fprintf(stderr, err_message, filename);
 		exit(1);
 	}
 
@@ -123,7 +125,9 @@ void load_server_list(const char *filename)
 	f_size = ftell(f);
 	if (f_size <= 0)
 	{
-		LOG_ERROR("Fatal error: %s is empty!", filename);
+		const char *err_message = "Fatal error: %s is empty!\n";
+		LOG_ERROR(err_message, filename);
+		fprintf(stderr, err_message, filename);
 		fclose(f);
 		exit(1);
 	}
@@ -132,7 +136,9 @@ void load_server_list(const char *filename)
 	fseek(f, 0, SEEK_SET);
 	if (fread(server_list_mem, 1, f_size, f) != f_size)
 	{
-		LOG_ERROR("Fatal error: %s read failed!", filename);
+		const char *err_message = "Fatal error: %s read failed!\n";
+		LOG_ERROR(err_message, filename);
+		fprintf(stderr, err_message, filename);
 		free(server_list_mem);
 		fclose(f);
 		exit(1);
@@ -161,6 +167,14 @@ void load_server_list(const char *filename)
 					break;	// This is a comment so ignore the rest of the line
 				else if (section < 4 && (server_list_mem[i] == ' ' || server_list_mem[i] == '\t' || i == iend))
 				{
+					if (num_servers >= MAX_SERVERS)
+					{
+						const char *errstg = "Fatal error: Too many servers specified in";
+						LOG_ERROR("%s %s", errstg, filename);
+						fprintf(stderr, "%s %s\n", errstg, filename);
+						exit(1);
+					}
+
 					// This is the end of a section so store it (except the description)
 					// as we include whitespace in the description
 					string[len] = '\0';

@@ -10,6 +10,7 @@
 #include "cursors.h"
 #include "draw_scene.h"
 #include "errors.h"
+#include "gamewin.h"
 #include "global.h"
 #include "hud.h"
 #include "init.h"
@@ -68,7 +69,7 @@ const dict_elem head_number_dict[] =
 	  { "5" ,  HEAD_5 },
 	  { NULL, -1      }
 	};
-int actor_part_sizes[ACTOR_NUM_PARTS] = {10, 40, 50, 100, 100, 100, 10, 20, 40, 60, 20};		// Elements according to actor_parts_enum
+int actor_part_sizes[ACTOR_NUM_PARTS] = {10, 40, 50, 100, 100, 100, 10, 20, 40, 60, 20, 20};		// Elements according to actor_parts_enum
 #else // EXT_ACTOR_DICT
 #define MAX_SKIN_COLORS 7
 #define MAX_GLOW_MODES 5
@@ -1123,7 +1124,7 @@ void next_command()
 						actors_list[i]->stop_animation=1;
 						actors_list[i]->sitting=1;
 						if(actors_list[i]->actor_id==yourself)
-							you_sit_down();
+							you_sit=1;
 						break;
 					case stand_up:
 						//LOG_TO_CONSOLE(c_green2,"stand_up");
@@ -1131,7 +1132,7 @@ void next_command()
 						actors_list[i]->stop_animation=1;
 						actors_list[i]->sitting=0;
 						if(actors_list[i]->actor_id==yourself)
-							you_stand_up();
+							you_sit=0;
 						break;
 					case enter_combat:
 					case leave_combat:
@@ -1320,16 +1321,16 @@ void next_command()
 
 					if (actors_list[i]->in_aim_mode == 0) {
 						missiles_log_message("%s (%d): enter in aim mode", actors_list[i]->actor_name, actors_list[i]->actor_id);
-					//if(actors_list[i]->actor_id==yourself) printf("%i, enter aim 0\n",thecount);
-					if(actors_list[i]->attached_actor>=0){
-						if (!ACTOR(i)->horse_rotated) {rotate_actor_and_horse_range(i,-1); ACTOR(i)->horse_rotated=1;}						//set the horse aim mode
-						actors_list[actors_list[i]->attached_actor]->in_aim_mode=1;
-						//stop_attachment(i); //add a wait
-						//we could start a horse_ranged_in
-						set_on_idle(actors_list[i]->attached_actor);
-						cal_actor_set_anim(i,actors_defs[actor_type].weapon[actors_list[i]->cur_weapon].cal_frames[cal_weapon_range_in_held_frame]);
-					} else
-						cal_actor_set_anim(i,actors_defs[actor_type].weapon[actors_list[i]->cur_weapon].cal_frames[cal_weapon_range_in_frame]);
+						//if(actors_list[i]->actor_id==yourself) printf("%i, enter aim 0\n",thecount);
+						if(actors_list[i]->attached_actor>=0){
+							if (!ACTOR(i)->horse_rotated) {rotate_actor_and_horse_range(i,-1); ACTOR(i)->horse_rotated=1;}						//set the horse aim mode
+							actors_list[actors_list[i]->attached_actor]->in_aim_mode=1;
+							//stop_attachment(i); //add a wait
+							//we could start a horse_ranged_in
+							set_on_idle(actors_list[i]->attached_actor);
+							cal_actor_set_anim(i,actors_defs[actor_type].weapon[actors_list[i]->cur_weapon].cal_frames[cal_weapon_range_in_held_frame]);
+						} else
+							cal_actor_set_anim(i,actors_defs[actor_type].weapon[actors_list[i]->cur_weapon].cal_frames[cal_weapon_range_in_frame]);
 						
 						actors_list[i]->cal_h_rot_start = 0.0;
 						actors_list[i]->cal_v_rot_start = 0.0;
@@ -1609,10 +1610,6 @@ void next_command()
 								targeted_z_rot=(actors_list[i]->que[0]-move_n)*45.0f;
 								rotation_angle=get_rotation_vector(z_rot,targeted_z_rot);
 								actors_list[i]->rotate_z_speed=rotation_angle/360.0;
-								if(auto_camera && actors_list[i]->actor_id==yourself){
-									camera_rotation_speed=rotation_angle/1000.0;
-									camera_rotation_duration=1000;
-								}
 
 								actors_list[i]->rotate_time_left=360;
 								actors_list[i]->rotating=1;
@@ -1892,6 +1889,7 @@ void add_command_to_actor(int actor_id, unsigned char command)
 #ifdef EXTRA_DEBUG
 	ERR();
 #endif
+	LOCK_ACTORS_LISTS();
 	act= get_actor_ptr_from_id(actor_id);
 
 	if(!act){
@@ -1899,10 +1897,8 @@ void add_command_to_actor(int actor_id, unsigned char command)
 		//if we got here, it means we don't have this actor, so get it from the server...
 		LOG_ERROR("%s %d - %d\n", cant_add_command, command, actor_id);
 	} else {
-		LOCK_ACTORS_LISTS();
 
 		//if (get_our_actor()->actor_id==act->actor_id) printf("ADD COMMAND %i to %i\n",command,actor_id);
-
 
 		if (command == missile_miss) {
 			missiles_log_message("%s (%d): will miss his target", act->actor_name, actor_id);
@@ -2084,6 +2080,7 @@ void add_command_to_actor(int actor_id, unsigned char command)
 		switch(command) {
 		case enter_combat:
 			act->async_fighting= 1;
+			check_to_auto_disable_ranging_lock();
 			break;
 		case leave_combat:
 			act->async_fighting= 0;
@@ -2183,7 +2180,6 @@ void add_command_to_actor(int actor_id, unsigned char command)
 			 act->async_z_rot= (command-turn_n)*45;
 			 break;
 		}
-		UNLOCK_ACTORS_LISTS();
 
 		if (k != k2) {
 			LOG_ERROR("Inconsistency between queues of attached actors %s (%d) and %s (%d)!",
@@ -2209,6 +2205,7 @@ void add_command_to_actor(int actor_id, unsigned char command)
 					act->que[k]=nothing;
 					actors_list[act->attached_actor]->que[k]=nothing;
 					add_command_to_actor(actor_id,command); //RECURSIVE!!!! should be done only one time
+					UNLOCK_ACTORS_LISTS();
 					return;
 				}
 			}
@@ -2223,6 +2220,7 @@ void add_command_to_actor(int actor_id, unsigned char command)
 			update_all_actors();
 		}
 	}
+	UNLOCK_ACTORS_LISTS();
 }
 
 
@@ -2567,28 +2565,35 @@ void flag_emote_frames(emote_data *emote,emote_frame *frame){
 			for(k=0;k<2;k++)
 				if(emote->anims[i][j][k]==frame)
 					emote->anims[i][j][k]=NULL;
-			
 }
-void free_emote_data(void *data){
-	emote_data *emote=data;
-	emote_frame *head,*frame,*tf;
-	int i,j,k;
-	if (!emote) return;
-	for(i=0;i<EMOTE_ACTOR_TYPES;i++)
-		for(j=0;j<4;j++)
-			for(k=0;k<2;k++) {
-				head=emote->anims[i][j][k];
-				if(!head) continue;
-				frame=head;
-				while(frame){
-					tf=frame->next;
+
+void free_emote_data(void *data)
+{
+	emote_data *emote = data;
+	emote_frame *head, *frame, *tf;
+	int i, j, k;
+	if (!emote)
+		return;
+
+	for (i = 0; i < EMOTE_ACTOR_TYPES; i++)
+	{
+		for (j = 0; j < 4; j++)
+		{
+			for (k = 0; k < 2; k++)
+			{
+				head = emote->anims[i][j][k];
+				if (!head)
+					continue;
+
+				flag_emote_frames(emote, head);
+
+				for (frame = head, tf = head->next; tf; frame = tf, tf = tf->next)
 					free(frame);
-					frame=tf;	
-				}
-				flag_emote_frames(emote,head);
+				free(frame);
 			}
+		}
+	}
 	free(emote);
-		
 }
 
 emote_data *new_emote(int id){
@@ -2901,13 +2906,13 @@ int parse_actor_shirt(actor_types *act, const xmlNode *cfg, const xmlNode *defau
 		const xmlNode *default_node = get_default_node(cfg, defaults);
 
 		if(default_node){
-			if(shirt->arms_name==NULL || *shirt->arms_name=='\0')
+			if (*shirt->arms_name=='\0')
 				get_item_string_value(shirt->arms_name, sizeof(shirt->arms_name), default_node, (xmlChar*)"arms");
-			if(shirt->model_name==NULL || *shirt->model_name=='\0'){
+			if (*shirt->model_name=='\0'){
 				get_item_string_value(shirt->model_name, sizeof(shirt->model_name), default_node, (xmlChar*)"mesh");
 				shirt->mesh_index= cal_load_mesh(act, shirt->model_name, "shirt");
 			}
-			if(shirt->torso_name==NULL || *shirt->torso_name=='\0')
+			if (*shirt->torso_name=='\0')
 				get_item_string_value(shirt->torso_name, sizeof(shirt->torso_name), default_node, (xmlChar*)"torso");
 		}
 	}
@@ -3039,9 +3044,9 @@ int parse_actor_legs (actor_types *act, const xmlNode *cfg, const xmlNode *defau
 		const xmlNode *default_node = get_default_node(cfg, defaults);
 
 		if(default_node){
-			if(legs->legs_name==NULL || *legs->legs_name=='\0')
+			if (*legs->legs_name=='\0')
 				get_item_string_value(legs->legs_name, sizeof(legs->legs_name), default_node, (xmlChar*)"skin");
-			if(legs->model_name==NULL || *legs->model_name=='\0'){
+			if (*legs->model_name=='\0'){
 				get_item_string_value(legs->model_name, sizeof(legs->model_name), default_node, (xmlChar*)"mesh");
 				legs->mesh_index= cal_load_mesh(act, legs->model_name, "legs");
 			}
@@ -3694,6 +3699,38 @@ int parse_actor_hair (actor_types *act, const xmlNode *cfg, const xmlNode *defau
 	return 1;
 }
 
+int parse_actor_eyes (actor_types *act, const xmlNode *cfg, const xmlNode *defaults)
+{
+	int col_idx;
+	size_t len;
+	char *buf;
+
+	if(cfg == NULL || cfg->children == NULL) return 0;
+
+	col_idx= get_int_property(cfg, "id");
+/*	if(col_idx < 0){
+		col_idx= get_property(cfg, "color", "eyes color", eyes_color_dict);
+	}
+*/
+	if(col_idx < 0 || col_idx >= actor_part_sizes[ACTOR_EYES_SIZE]){
+		LOG_ERROR("Unable to find id/property node %s\n", cfg->name);
+		return 0;
+	}
+
+	if (act->eyes == NULL) {
+		int i;
+		act->eyes = (eyes_part*)calloc(actor_part_sizes[ACTOR_EYES_SIZE], sizeof(eyes_part));
+		for (i = actor_part_sizes[ACTOR_EYES_SIZE]; i--;) act->eyes[i].mesh_index= -1;
+	}
+
+	buf= act->eyes[col_idx].eyes_name;
+	len= sizeof (act->eyes[col_idx].eyes_name);
+	get_string_value(buf, len, cfg);
+
+
+	return 1;
+}
+
 int cal_get_idle_group(actor_types *act,char *name)
 {
 	int i;
@@ -3770,13 +3807,13 @@ int parse_actor_frames (actor_types *act, const xmlNode *cfg, const xmlNode *def
 {
 	const xmlNode *item;
 	char str[255];
-	int ok = 1, index;
+	int ok = 1;
 
 	if (cfg == NULL) return 0;
 
 	for (item = cfg; item; item = item->next) {
 		if (item->type == XML_ELEMENT_NODE) {
-			index = -1;
+			int index = -1;
 			if (xmlStrcasecmp (item->name, (xmlChar*)"CAL_IDLE_GROUP") == 0) {
 				get_string_value (str,sizeof(str),item);
      				//act->cal_walk_frame=cal_load_anim(act,str);
@@ -3935,8 +3972,8 @@ int parse_actor_frames (actor_types *act, const xmlNode *cfg, const xmlNode *def
 					, get_int_property(item, "duration")
 					);
 					hash_add(act->emote_frames, (void*)(NULL+j), (void*)anim);					
+					continue;
 				}
-				continue;
 			}
 
 			if (index >= 0)
@@ -3949,10 +3986,6 @@ int parse_actor_frames (actor_types *act, const xmlNode *cfg, const xmlNode *def
 #endif	//NEW_SOUND
 					, get_int_property(item, "duration")
 					);
-
-
-
-
 			}
 			else if (index != -2)
 			{
@@ -4136,9 +4169,10 @@ int parse_actor_boots (actor_types *act, const xmlNode *cfg, const xmlNode *defa
 		const xmlNode *default_node = get_default_node(cfg, defaults);
 
 		if(default_node){
-			if(boots->boots_name==NULL || *boots->boots_name=='\0')
+			if (*boots->boots_name=='\0')
 				get_item_string_value(boots->boots_name, sizeof(boots->boots_name), default_node, (xmlChar*)"skin");
-			if(boots->model_name==NULL || *boots->model_name=='\0'){
+			if (*boots->model_name=='\0')
+			{
 				get_item_string_value(boots->model_name, sizeof(boots->model_name), default_node, (xmlChar*)"mesh");
 				boots->mesh_index= cal_load_mesh(act, boots->model_name, "boots");
 			}
@@ -4348,6 +4382,8 @@ int parse_actor_nodes(actor_types *act, const xmlNode *cfg, const xmlNode *defau
 				ok &= parse_actor_skin(act, item, defaults);
 			} else if (!strcmp(name, "hair")) {
 				ok &= parse_actor_hair(act, item, defaults);
+			} else if (!strcmp(name, "eyes")) {
+				ok &= parse_actor_eyes(act, item, defaults);
 			} else if (!strcmp(name, "boots")) {
 				ok &= parse_actor_boots(act, item, defaults);
 			} else if (!strcmp(name, "legs")) {
@@ -4425,7 +4461,6 @@ int parse_actor_script(const xmlNode *cfg)
 		);
 		LOG_ERROR(str);
 	}
-	ok= 1;
 	act->actor_type= act_idx;	// memorize the ID & name to help in debugging
 	safe_strncpy(act->actor_name, get_string_property(cfg, "type"), sizeof(act->actor_name));
 	actor_check_string(act, "actor", "name", act->actor_name);
@@ -4657,6 +4692,8 @@ int parse_actor_part_sizes(const xmlNode *node)
 					actor_part_sizes[ACTOR_SKIN_SIZE] = get_int_value(data);
 				} else if (!strcasecmp(str, "hair")) {
 					actor_part_sizes[ACTOR_HAIR_SIZE] = get_int_value(data);
+				} else if (!strcasecmp(str, "eyes")) {
+					actor_part_sizes[ACTOR_EYES_SIZE] = get_int_value(data);
 				} else if (!strcasecmp(str, "boots")) {
 					actor_part_sizes[ACTOR_BOOTS_SIZE] = get_int_value(data);
 				} else if (!strcasecmp(str, "legs")) {
@@ -4717,7 +4754,7 @@ int read_actor_defs (const char *dir, const char *index)
 
 	safe_snprintf (fname, sizeof(fname), "%s/%s", dir, index);
 
-	doc = xmlReadFile (fname, NULL, 0);
+	doc = xmlReadFile (fname, NULL, XML_PARSE_NOENT);
 	if (doc == NULL) {
 		LOG_ERROR("Unable to read actor definition file %s", fname);
 		return 0;
@@ -4756,4 +4793,39 @@ void init_actor_defs()
 	set_invert_v_coord();
 #endif	/* NEW_TEXTURES */
 	read_actor_defs ("actor_defs", "actor_defs.xml");
+}
+
+void free_actor_defs()
+{
+	int i;
+	for (i=0; i<MAX_ACTOR_DEFS; i++)
+	{
+		if (actors_defs[i].head)
+			free(actors_defs[i].head);
+		if (actors_defs[i].shield)
+			free(actors_defs[i].shield);
+		if (actors_defs[i].cape)
+			free(actors_defs[i].cape);
+		if (actors_defs[i].helmet)
+			free(actors_defs[i].helmet);
+		if (actors_defs[i].neck)
+			free(actors_defs[i].neck);
+		if (actors_defs[i].weapon)
+			free(actors_defs[i].weapon);
+		if (actors_defs[i].shirt)
+			free(actors_defs[i].shirt);
+		if (actors_defs[i].skin)
+			free(actors_defs[i].skin);
+		if (actors_defs[i].hair)
+			free(actors_defs[i].hair);
+		if (actors_defs[i].boots)
+			free(actors_defs[i].boots);
+		if (actors_defs[i].legs)
+			free(actors_defs[i].legs);
+		if (actors_defs[i].eyes)
+			free(actors_defs[i].eyes);
+		if (actors_defs[i].hardware_model)
+			clear_buffers(&actors_defs[i]);
+		CalCoreModel_Delete(actors_defs[i].coremodel);
+	}
 }

@@ -16,6 +16,24 @@
 #endif
 
 
+#ifdef ELC
+typedef struct
+{
+	char *name;
+	const char *string;
+} named_string;
+
+typedef struct
+{
+	char *name;
+	size_t num_strings;
+	named_string *strings;
+} string_group;
+
+static string_group* named_strings = NULL;
+static size_t num_named_strings = 0;
+#endif
+
 /*! \name Tooltips*/
 /*! \{ */
 #ifdef ELC
@@ -45,8 +63,10 @@ char	tt_walk[30],
 	newchar_cred_help[100],
 	newchar_done_help[100],
 	tt_name[60],
-	tt_info[30];
-char	tt_emotewin[30];
+	tt_info[30],
+	tt_emotewin[30],
+	tt_rangewin[30],
+	tt_minimap[30];
 
 #endif // ELC
 
@@ -139,6 +159,10 @@ char
 	buddy_request_str[10],
 	/* chat.c */
 	channel_help_str[200],
+	channel_color_title_str[30],
+	channel_color_str[40],
+	channel_color_add_str[20],
+	channel_color_delete_str[20],
 	/* console.c */
 	help_cmd_markpos_str[50],
 	location_info_str[40],
@@ -155,6 +179,8 @@ char
 	urlwin_clear_str[30],
 	/*draw_scene.c*/
 	low_framerate_str[100],
+	/* encyclopedia */
+	encycl_search_prompt_str[25],
 	/*gamewin.c*/
 	ranginglock_enabled_str[100],
 	ranginglock_disabled_str[50],
@@ -165,6 +191,16 @@ char
 	stats_scroll_help_str[100],
 	remove_bar_message_str[50],
 	cm_action_points_str[30],
+	hud_timer_cm_str[100],
+	hud_timer_popup_title_str[25],
+	/* hud_indicators.cpp */
+	no_indicators_str[20],
+	cm_indicators_str[85],
+	day_indicator_str[60],
+	harvest_indicator_str[60],
+	poison_indicator_str[60],
+	messages_indicator_str[60],
+	ranginglock_indicator_str[70],
 	/*loginwin.c*/
 	login_username_str[20],
 	login_password_str[20],
@@ -182,7 +218,7 @@ char
 	quantity_edit_str[100],
 	equip_here_str[100],
 	equip_str[20],
-	pick_item_help_str[50],
+	mod_click_item_help_str[50],
 	multiuse_item_help_str[50],
 	stoall_help_str[50],
 	getall_help_str[50],
@@ -207,6 +243,8 @@ char
 	researching_str[30],
 	not_researching_anything[25],
 	not_researching_str[25],
+	countdown_str[20],
+	stopwatch_str[20],
 	minutes_str[15],
 	minute_str[15],
 	idle_str[15],
@@ -228,11 +266,14 @@ char
 	/*multiplayer.c*/
 	connect_to_server_str[50],
 	reconnect_str[50],
+	test_server_connect_str[40],
+	server_connect_test_failed_str[40],
 	alt_x_quit[50],
 	license_check[150], 
 	/*new_character.c*/
 	skin_str[15],
 	hair_str[15],
+	eyes_str[15],
 	shirt_str[15],
 	pants_str[15],
 	boots_str[15],
@@ -289,6 +330,9 @@ char
 	ranging_success_rate_str[40],
 	ranging_critical_rate_str[40],
 	ranging_exp_per_arrow_str[40],
+	/* storage */
+	storage_filter_prompt_str[15],
+	storage_filter_help_str[40],
 	/* session.c */
 	session_reset_help[60],
 	/*trade.c*/
@@ -307,20 +351,20 @@ char
 	cm_quickspell_menu_str[50],
 	cm_textedit_menu_str[100],
 	cm_quickbar_menu_str[150],
-	cm_hud_menu_str[250],
+	cm_hud_menu_str[270],
 	cm_banner_menu_str[240],
 	cm_title_menu_str[150],
 	cm_title_help_str[50],
 	cm_items_menu_str[150],
-	cm_storage_menu_str[75],
+	cm_storage_menu_str[90],
 	cm_astro_menu_str[80],
 	cm_ranging_menu_str[50],
 	cm_dialog_options_str[80],
 	cm_dialog_menu_str[60],
 	cm_url_menu_str[150],
-	cm_counters_menu_str[90],
+	cm_counters_menu_str[160],
 	cm_help_options_str[50],
-	cm_npcname_menu_str[50],
+	cm_npcname_menu_str[60],
 	cm_dialog_copy_menu_str[50],
 	cm_minimap_menu_str[60],
 	cm_user_menu_str[150],
@@ -329,6 +373,7 @@ char
 	cm_stats_bar_base_str[30],
 	cm_recipe_menu_str[100],
 	cm_manuwin_menu_str[50],
+	cm_encycl_base_str[150],
 	/* user_menus.cpp */
 	um_invalid_command_str[50],
 	um_invalid_line_str[50],
@@ -407,6 +452,7 @@ char	name_too_long[75],
 	mod_cmd_str[5],
 	bc_cmd_str[5],
 	msg_accept_buddy_str[55],
+	local_save_str[80],
 	logconn_str[50],
 	time_warn_hour_str[75],
 	time_warn_sunrise_str[100],
@@ -440,7 +486,9 @@ char	name_too_long[75],
 	cmd_user_menu_wait_time_ms[30],
 	cmd_open_url[20],
 	cmd_show_spell[20],
-	cmd_cast_spell[20];
+	cmd_cast_spell[20],
+	cmd_reload_icons[20],
+	cmd_session_counters[20];
 #endif
 
 /*! \name Errors */
@@ -468,6 +516,7 @@ char	reg_error_str[15],
 	/* books.c */
 	book_open_err_str[30],
 	/*cache.c*/
+	cache_items_str[20],
 	cache_size_str[20],
 	/* cal.c */
 	no_animation_err_str[30],
@@ -557,6 +606,7 @@ char	reg_error_str[15],
 	init_display_str[35],
 	prep_op_win_str[35],
 	/* interface;c */
+	err_mapmarks_str[60],
 	err_nomap_str[60],
 	/* map_io.c */
 	load_map_str[35],
@@ -671,9 +721,12 @@ char	reg_error_str[15],
 	exceed_note_buffer[100],
 	user_no_more_notes[100],
 	user_no_more_note_tabs[100],
+	fatal_data_error[120],
 	dc_note_remove[50],
 	note_saved[50],
 	note_save_failed[50],
+	/* encyclopedia */
+	cant_load_encycl[70],
 	/* text.c */
 	warn_currently_ignoring[50];
 #else
@@ -736,6 +789,7 @@ char	win_notepad[20],
 	button_save_notes[30],
 	label_note_name[20],
 	game_version_str[60],
+	game_version_prefix_str[60],
 	label_cursor_coords[17],
 	label_mark_filter[13];
 #endif  // ELC
@@ -815,6 +869,7 @@ void * add_xml_group(int type, int no, ...)
 			grp=(group_id*)calloc(no,sizeof(group_id));
 			for(;i<no;i++)
 				safe_snprintf (grp[i].xml_id, sizeof (grp[i].xml_id), "%s", va_arg (ap, char*));
+			va_end(ap);
 			return grp;
 		}
 		case DIGROUP: {
@@ -822,6 +877,7 @@ void * add_xml_group(int type, int no, ...)
 			grp=(group_id_di*)calloc(no,sizeof(group_id_di));
 			for(;i<no;i++)
 				safe_snprintf (grp[i].xml_id, sizeof (grp[i].xml_id), "%s", va_arg (ap, char*));
+			va_end(ap);
 			return grp;
 		}
 #ifdef ELC
@@ -830,10 +886,12 @@ void * add_xml_group(int type, int no, ...)
 			grp=(group_stat*)calloc(no,sizeof(group_stat));
 			for(;i<no;i++)
 				safe_snprintf (grp[i].xml_id, sizeof (grp[i].xml_id), "%s", va_arg (ap, char*));
+			va_end(ap);
 			return grp;
 		}
 #endif
 		default: 
+			va_end(ap);
 			return NULL;
 	}
 }
@@ -892,6 +950,74 @@ void init_translatables()
 }
 
 #ifdef ELC
+/* Save translated strings with their names for later lookup.
+*/
+void save_named_strings(const group_id *groups, size_t num_groups, const char *group_name)
+{
+	size_t i,j;
+
+	for (j=0; j<num_groups; j++)
+	{
+		if (strcmp(groups[j].xml_id, group_name) == 0)
+		{
+			named_strings = (string_group*)realloc(named_strings, (num_named_strings+1) * sizeof(string_group));
+			named_strings[num_named_strings].name = strdup(group_name);
+
+			named_strings[num_named_strings].num_strings = groups[j].no;
+			named_strings[num_named_strings].strings = (named_string*)malloc(sizeof(named_string) * groups[j].no);
+
+			for (i=0; i<groups[j].no; i++)
+			{
+				named_strings[num_named_strings].strings[i].name = strdup(groups[j].strings[i]->xml_id);
+				named_strings[num_named_strings].strings[i].string = groups[j].strings[i]->var;
+			}
+
+			num_named_strings++;
+			return;
+		}
+	}
+}
+#endif
+
+#ifdef ELC
+/* Retrieve a translated string by its name.
+*/
+const char* get_named_string(const char* group_name, const char* string_name)
+{
+	size_t i,j;
+	if ((group_name!=NULL) && (string_name!=NULL))
+		for (j=0; j<num_named_strings; j++)
+			if (strcmp(named_strings[j].name, group_name) == 0)
+				for (i=0; i<named_strings[j].num_strings; i++)
+					if (strcmp(named_strings[j].strings[i].name, string_name) == 0)
+						return named_strings[j].strings[i].string;
+	return "Unknown string";
+}
+#endif
+
+/* Free the memory allocated by translation module
+*/
+void free_translations(void)
+{
+#ifdef ELC
+	/* the named strings */
+	{
+	size_t i,j;
+	for (j=0; j<num_named_strings; j++)
+	{
+		for (i=0; i<named_strings[j].num_strings; i++)
+			free(named_strings[j].strings[i].name);
+		free(named_strings[j].name);
+		free(named_strings[j].strings);
+	}
+	free(named_strings);
+	num_named_strings = 0;
+	named_strings = NULL;
+	}
+#endif
+}
+
+#ifdef ELC
 void init_console()
 {
 	group_id * filter=&(console_str[0]);
@@ -924,6 +1050,7 @@ void init_console()
 	add_xml_identifier(filter,"none",no_filters_str,"You are filtering nothing!",sizeof(no_filters_str));
 	add_xml_identifier(filter,"cur",filters_str,"You are currently filtering",sizeof(filters_str));
 	
+	add_xml_identifier(misc,"localsave",local_save_str,"Local files saved, asking server to save too...",sizeof(local_save_str));
 	add_xml_identifier(misc,"log",logconn_str,"Logging raw connection data",sizeof(logconn_str));
 	add_xml_identifier(misc,"card",video_card_str,"Video card",sizeof(video_card_str));
 	add_xml_identifier(misc,"vendor",video_vendor_str,"Vendor ID",sizeof(video_vendor_str));
@@ -1013,6 +1140,8 @@ void init_console()
 	add_xml_identifier(cmd_grp,"user_menu_wait_time_ms",cmd_user_menu_wait_time_ms,"user_menu_wait_time_ms",sizeof(cmd_user_menu_wait_time_ms));
 	add_xml_identifier(cmd_grp,"show_spell",cmd_show_spell,"show_spell",sizeof(cmd_show_spell));
 	add_xml_identifier(cmd_grp,"cast_spell",cmd_cast_spell,"cast_spell",sizeof(cmd_cast_spell));
+	add_xml_identifier(cmd_grp,"session_counters",cmd_session_counters,"session_counters",sizeof(cmd_session_counters));
+	add_xml_identifier(cmd_grp,"reload_icons",cmd_reload_icons,"reload_icons",sizeof(cmd_reload_icons));
 }
 #endif
 
@@ -1064,6 +1193,8 @@ void init_errors()
 	add_xml_identifier(load,"exceednotes",exceed_note_buffer,"Tried to exceed notepad buffer! Ignored.",sizeof(exceed_note_buffer));
 	add_xml_identifier(load,"nomorenotes",user_no_more_notes,"No room for more notes.",sizeof(user_no_more_notes));
 	add_xml_identifier(load,"nomorenotetabs",user_no_more_note_tabs,"No room for more note tabs.",sizeof(user_no_more_note_tabs));
+	add_xml_identifier(load,"fataldataerror",fatal_data_error,"Fatal error while loading data files. Either set the data_dir correctly or run from the data directory.",sizeof(fatal_data_error));
+	add_xml_identifier(load,"encyclerror",cant_load_encycl,"Failed to load encyclopedia, check your installation.",sizeof(cant_load_encycl));
 
 
 	//Miscellaneous errors
@@ -1100,6 +1231,7 @@ void init_errors()
 	add_xml_identifier (misc, "emptymap", empty_map_str, "Using an empty map instead.", sizeof(empty_map_str));
 	add_xml_identifier (misc, "nonomap", no_nomap_str, "Fatal error: Couldn't load map ./maps/nomap.elm.\nFix your maps.", sizeof(no_nomap_str));
 	add_xml_identifier (misc, "nobmpmap", err_nomap_str, "There is no map for this place.", sizeof(err_nomap_str));
+	add_xml_identifier (misc, "mapmarks", err_mapmarks_str, "Maximum number of mapmarks reached.", sizeof(err_mapmarks_str));
 	add_xml_identifier (misc, "book_open", book_open_err_str, "Couldn't open the book: %s!", sizeof(book_open_err_str));
 	add_xml_identifier (misc, "noanimation", no_animation_err_str, "No animation: %s!\n", sizeof(no_animation_err_str));
 	add_xml_identifier (misc, "invalid_location", invalid_location_str, "Invalid location %d,%d", sizeof(invalid_location_str));
@@ -1204,7 +1336,7 @@ void init_errors()
 	add_xml_identifier(video,"invalid",invalid_video_mode,"Stop playing with the configuration file and select valid modes!",sizeof(invalid_video_mode));
 
 	//Rule errors
-	add_xml_identifier(rules,"proceed",you_can_proceed,"Read the rules and you can play in %dsec",sizeof(you_can_proceed));
+	add_xml_identifier(rules,"proceed",you_can_proceed,"Read the rules and you can play in %d seconds",sizeof(you_can_proceed));
 	add_xml_identifier(rules,"ready",accepted_rules,"Read the rules and click on \"I Accept\" to play!",sizeof(accepted_rules));
 	add_xml_identifier(rules,"accept",accept_label,"I Accept",sizeof(accept_label));
 	add_xml_identifier(rules,"read",read_rules_str,"An error occured while reading the rules",sizeof(read_rules_str));
@@ -1237,6 +1369,7 @@ void init_help()
 	add_xml_identifier(misc,"open_storage",open_storage_str,"Open storage",sizeof(open_storage_str));
 	add_xml_identifier(misc,"reopen_storage",reopen_storage_str,"Reopen for setting to take effect",sizeof(reopen_storage_str));
 	add_xml_identifier(misc,"low",low_framerate_str,"Low framerate detected, shadows and eye candy disabled!",sizeof(low_framerate_str));
+	add_xml_identifier(misc,"encycl_search_prompt",encycl_search_prompt_str,"Enter text to find",sizeof(encycl_search_prompt_str));
 	add_xml_identifier(misc,"size",window_size_adjusted_str,"Window size adjusted to %s",sizeof(window_size_adjusted_str));
 	add_xml_identifier(misc,"trade",no_open_on_trade,"You can't open this window while on trade.",sizeof(no_open_on_trade));
 	add_xml_identifier(misc,"user",login_username_str,"Username:",sizeof(login_username_str));
@@ -1256,6 +1389,8 @@ void init_help()
 	add_xml_identifier(misc,"research",researching_str,"Researching",sizeof(researching_str));
 	add_xml_identifier(misc,"nothing",not_researching_anything,"Nothing",sizeof(not_researching_anything));
 	add_xml_identifier(misc,"not_researching",not_researching_str,"Researching nothing",sizeof(not_researching_anything));
+	add_xml_identifier(misc,"countdown",countdown_str,"Countdown",sizeof(countdown_str));
+	add_xml_identifier(misc,"stopwatch",stopwatch_str,"Stopwatch",sizeof(stopwatch_str));
 	add_xml_identifier(misc,"minutes",minutes_str,"minutes",sizeof(minutes_str));
 	add_xml_identifier(misc,"minute",minute_str,"minute",sizeof(minute_str));
 	add_xml_identifier(misc,"idle",idle_str,"Idle",sizeof(idle_str));
@@ -1276,6 +1411,8 @@ void init_help()
 	add_xml_identifier (misc, "invalid_spell", invalid_spell_str, "Invalid spell", sizeof (invalid_spell_str));
 	add_xml_identifier(misc,"connect",connect_to_server_str,"Connecting to Server...",sizeof(connect_to_server_str));
 	add_xml_identifier(misc,"reconnect",reconnect_str,"Press any key to try again.",sizeof(reconnect_str));
+	add_xml_identifier(misc,"test_server_connect",test_server_connect_str,"Testing server connection...",sizeof(test_server_connect_str));
+	add_xml_identifier(misc,"server_connect_test_failed",server_connect_test_failed_str,"server connection test failed",sizeof(server_connect_test_failed_str));
 	add_xml_identifier (misc, "x_quit", alt_x_quit, "Press Alt-x to close the game", sizeof (alt_x_quit));
 	add_xml_identifier(misc,"license",license_check,"Entropy says: U R 2 g00d 2 r34d +h3 license.txt?\nBTW, that license.txt file is actually there for a reason.",sizeof(license_check));
 	add_xml_identifier(misc,"session_reset_help",session_reset_help,"Double-click to reset session information",sizeof(session_reset_help));
@@ -1283,12 +1420,13 @@ void init_help()
 	add_xml_identifier(misc,"abort",abort_str,"Abort",sizeof(abort_str));
 	add_xml_identifier(misc,"sigils",sig_too_few_sigs,"This spell requires at least 2 sigils",sizeof(sig_too_few_sigs));
 	add_xml_identifier(misc,"switch",switch_video_mode,"Switches to video mode %s",sizeof(switch_video_mode));
-	add_xml_identifier(misc,"cache",cache_size_str,"Cache size",sizeof(cache_size_str));
+	add_xml_identifier(misc,"cachei",cache_items_str,"items",sizeof(cache_items_str));
+	add_xml_identifier(misc,"caches",cache_size_str,"Cache size",sizeof(cache_size_str));
 	add_xml_identifier (misc, "appropr_name", use_appropriate_name, "Use an appropriate name:\nPlease do not create a name that is obscene or offensive, contains more than 2 digits, is senseless or stupid (i.e. djrtq47fa), or is made with the intent of impersonating another player.\nTake into consideration that the name you choose does affect the atmosphere of the game. Inappropriate names can and will be locked.", sizeof (use_appropriate_name) );
-	add_xml_identifier(misc,"edit_quantity",quantity_edit_str,"Rightclick on the quantity you wish to edit",sizeof(quantity_edit_str));
+	add_xml_identifier(misc,"edit_quantity",quantity_edit_str,"Right-click on the quantity you wish to edit",sizeof(quantity_edit_str));
 	add_xml_identifier(misc,"equip_here",equip_here_str,"Place an item in these boxes to equip it",sizeof(equip_here_str));
-	add_xml_identifier(misc,"pick_item_help",pick_item_help_str,"Pickup item. +ctrl/+alt to drop/store all",sizeof(pick_item_help_str));
-	add_xml_identifier(misc,"multiuse_item_help",multiuse_item_help_str,"Leftclick to use (+shift to use again)",sizeof(multiuse_item_help_str));
+	add_xml_identifier(misc,"mod_click_item_help",mod_click_item_help_str,"Left-click +ctrl/+alt to drop/store all",sizeof(mod_click_item_help_str));
+	add_xml_identifier(misc,"multiuse_item_help",multiuse_item_help_str,"Left-click to use (+shift to use again)",sizeof(multiuse_item_help_str));
 	add_xml_identifier(misc,"equipment",equip_str,"Equipment",sizeof(equip_str));
 	add_xml_identifier(misc,"stoall_help",stoall_help_str,"Move all items into opened storage.",sizeof(stoall_help_str));
 	add_xml_identifier(misc,"getall_help",getall_help_str,"Get all items from ground bag.",sizeof(getall_help_str));
@@ -1324,9 +1462,22 @@ void init_help()
 	add_xml_identifier(misc,"clear_urlwin",urlwin_clear_str,"Clear the URL list",sizeof(urlwin_clear_str));
 	add_xml_identifier(misc,"reset",reset_str,"Reset",sizeof(reset_str));
 	add_xml_identifier(misc,"channel_help",channel_help_str,"Click a Channel to join. You can be in up to 3 channels at a time.\n\nTo talk in a channel, type @ before your message. You do not have to type @ to talk in Local.",sizeof(channel_help_str));
+	add_xml_identifier(misc,"channel_color_title",channel_color_title_str,"Channel Colors",sizeof(channel_color_title_str));
+	add_xml_identifier(misc,"channel_color",channel_color_str,"Set/delete the color for channel",sizeof(channel_color_str));
+	add_xml_identifier(misc,"channel_color_add",channel_color_add_str,"Set",sizeof(channel_color_add_str));
+	add_xml_identifier(misc,"channel_color_delete",channel_color_delete_str,"Delete",sizeof(channel_color_delete_str));
 	add_xml_identifier(misc,"stats_scroll_help",stats_scroll_help_str,"Scroll Up/Down using CTRL+left/CTRL+right click or scrollwheel.",sizeof(stats_scroll_help_str));
 	add_xml_identifier(misc,"remove_bar_message",remove_bar_message_str,"Removed exp bar as space is limited.",sizeof(remove_bar_message_str));
 	add_xml_identifier(misc,"cm_action_points",cm_action_points_str,"Show Action Points Bar",sizeof(cm_action_points_str));
+	add_xml_identifier(misc,"hud_timer_cm",hud_timer_cm_str,"Change Mode\nKeep State\n--\nStart/Stop\nSet Time\nReset Time\n--\nShow Help",sizeof(hud_timer_cm_str));
+	add_xml_identifier(misc,"hud_timer_popup_title",hud_timer_popup_title_str,"Time (in seconds)",sizeof(hud_timer_popup_title_str));
+	add_xml_identifier(misc,"no_indicators",no_indicators_str,"No Indicators",sizeof(no_indicators_str));
+	add_xml_identifier(misc,"cm_indicators",cm_indicators_str,"--\nMovable Window\nBackground On\nBorder On\n--\nReset Position\n\n--\n",sizeof(cm_indicators_str));
+	add_xml_identifier(misc,"day_indicator",day_indicator_str,"S||Special Day||Ordinary Day||Special Days",sizeof(day_indicator_str));
+	add_xml_identifier(misc,"harvest_indicator",harvest_indicator_str,"H||Harvesting||Not Harvesting||Harvesting Status",sizeof(harvest_indicator_str));
+	add_xml_identifier(misc,"poison_indicator",poison_indicator_str,"P||Poisoned||Not Poisoned||Poison Status",sizeof(poison_indicator_str));
+	add_xml_identifier(misc,"messages_indicator",messages_indicator_str,"M||Recent Messages||No Messages||Message Count",sizeof(messages_indicator_str));
+	add_xml_identifier(misc,"ranginglock_indicator",ranginglock_indicator_str,"R||Ranging Lock On||Ranging Lock Off||Ranging Lock Status",sizeof(ranginglock_indicator_str));
 	add_xml_identifier(misc,"dc_note_rm",dc_note_remove,"Double-click to remove this category",sizeof(dc_note_remove));
 	add_xml_identifier(misc,"note_saved",note_saved,"Your notes have been saved",sizeof(note_saved));
 	add_xml_identifier(misc,"note_save_failed",note_save_failed,"Failed to save your notes!",sizeof(note_save_failed));
@@ -1341,10 +1492,13 @@ void init_help()
 	add_xml_identifier(misc,"ranging_success_rate", ranging_success_rate_str, "Success rate     %.2f %%", sizeof(ranging_success_rate_str));
 	add_xml_identifier(misc,"ranging_critical_rate", ranging_critical_rate_str, "Critical rate    %.2f %%", sizeof(ranging_critical_rate_str));
 	add_xml_identifier(misc,"ranging_exp_per_arrow", ranging_exp_per_arrow_str, "Exp/arrows       %.2f exp", sizeof(ranging_exp_per_arrow_str));
+	add_xml_identifier(misc,"storage_filter_prompt", storage_filter_prompt_str, "Filter: ", sizeof(storage_filter_prompt_str));
+	add_xml_identifier(misc,"storage_filter_help", storage_filter_help_str, "Type text - filter items.", sizeof(storage_filter_help_str));
 
 	//New characters
 	add_xml_identifier(new,"skin",skin_str,"Skin",sizeof(skin_str));
 	add_xml_identifier(new,"hair",hair_str,"Hair",sizeof(hair_str));
+	add_xml_identifier(new,"eyes",eyes_str,"Eyes",sizeof(eyes_str));
 	add_xml_identifier(new,"shirt",shirt_str,"Shirt",sizeof(shirt_str));
 	add_xml_identifier(new,"pants",pants_str,"Pants",sizeof(pants_str));
 	add_xml_identifier(new,"boots",boots_str,"Boots",sizeof(boots_str));
@@ -1420,7 +1574,9 @@ void init_help()
 	add_xml_identifier(tooltips,"name_pass",tt_name,"Choose name and password",sizeof(tt_name));
 	add_xml_identifier (tooltips, "info", tt_info, "View notepad/URL window", sizeof (tt_info));
 	add_xml_identifier (tooltips, "emotewin", tt_emotewin, "View Emote window", sizeof (tt_emotewin));
-	
+	add_xml_identifier (tooltips, "range", tt_rangewin, "View Ranging window", sizeof (tt_rangewin));
+	add_xml_identifier (tooltips, "minimap", tt_minimap, "View Minimap window", sizeof (tt_minimap));
+
 	//Buddy list
 	add_xml_identifier(buddy, "name", buddy_name_str, "Name:", sizeof(buddy_name_str));
 	add_xml_identifier(buddy, "name_desc", buddy_long_name_str, "The name of your buddy", sizeof(buddy_long_name_str));
@@ -1455,28 +1611,29 @@ void init_help()
 	add_xml_identifier(misc, "cm_quickspell_menu", cm_quickspell_menu_str, "Move Up\nMove Down\nRemove\n", sizeof(cm_quickspell_menu_str));
 	add_xml_identifier(misc, "cm_textedit_menu", cm_textedit_menu_str, "Cut\nCopy\nPaste\n--\nDate\nTime\nCoords", sizeof(cm_textedit_menu_str));
 	add_xml_identifier(misc, "cm_quickbar_menu", cm_quickbar_menu_str, "Quickbar Relocatable\nQuickbar Draggable\nReset Quickbar Position\nFlip Quickbar\nEnable Quickbar Menu\n", sizeof(cm_quickbar_menu_str));
-	add_xml_identifier(misc, "cm_hud_menu", cm_hud_menu_str, "Show Stats\nShow Stats Bars\nShow Knowledge Bar\nShow Digital Clock\nShow Analogue Clock\nShow Seconds\nShow FPS\nEnable Quickbar Menu\n--\nShow Minimap\nShow Ranging Stats\n--\nEnable Sound Effects\nEnable Music\n--\nCopy Location", sizeof(cm_hud_menu_str));
+	add_xml_identifier(misc, "cm_hud_menu", cm_hud_menu_str, "Show Stats\nShow Stats Bars\nShow Knowledge Bar\nShow Timer\nShow Digital Clock\nShow Analogue Clock\nShow Seconds\nShow FPS\nShow Indicators\nEnable Quickbar Menu\n--\nShow Minimap\nShow Ranging Stats\n--\nEnable Sound Effects\nEnable Music\n--\nCopy Location", sizeof(cm_hud_menu_str));
 	add_xml_identifier(misc, "cm_banner_menu", cm_banner_menu_str, "Show Names\nShow Health Bars\nShow Health Numbers\nShow Ether Bar\nShow Ether Numbers\nEnable Instance Mode\nShow Speech Bubbles\nEnable Banner Background\nSit Lock\nRanging Lock\n--\nDisable This Menu\n", sizeof(cm_banner_menu_str));
 	add_xml_identifier(misc, "cm_title_menu", cm_title_menu_str, "Hide Windows\nOpaque Background\nWindows On Top\n", sizeof(cm_title_menu_str));
 	add_xml_identifier(misc, "cm_title_help", cm_title_help_str, "Right-click for window menu", sizeof(cm_title_help_str));
-	add_xml_identifier(misc, "cm_items_menu", cm_items_menu_str, "--\nUse Small Window\nManual Window Size\nItem Window On Drop\nAllow Equipment Swap\n--\nOpen Storage (View Only)", sizeof(cm_items_menu_str));
-	add_xml_identifier(misc, "cm_storage_menu", cm_storage_menu_str, "--\nPrint Items To Console\nSort Categories Alphabetically\n", sizeof(cm_storage_menu_str));
+	add_xml_identifier(misc, "cm_items_menu", cm_items_menu_str, "--\nUse Small Window\nManual Window Size\nItem Window On Drop\nAllow Equipment Swap\nAlt/Ctrl-click With Any Cursor\n--\nOpen Storage (View Only)", sizeof(cm_items_menu_str));
+	add_xml_identifier(misc, "cm_storage_menu", cm_storage_menu_str, "--\nPrint Items To Console\nSort Categories Alphabetically\nDisable item filter", sizeof(cm_storage_menu_str));
 	add_xml_identifier(misc, "cm_astro_menu", cm_astro_menu_str, "--\nPrint Details To Console\nAlways Print Details To Console", sizeof(cm_astro_menu_str));
 	add_xml_identifier(misc, "cm_ranging_menu", cm_ranging_menu_str, "--\nPrint To Console", sizeof(cm_ranging_menu_str));
 	add_xml_identifier(misc, "cm_dialog_options", cm_dialog_options_str, "Auto close storage dialogue\nAuto select storage option in dialogue", sizeof(cm_dialog_options_str));
 	add_xml_identifier(misc, "cm_dialog_menu", cm_dialog_menu_str, "--\nEnable Keypresses\nKeypresses Anywhere", sizeof(cm_dialog_menu_str));
 	add_xml_identifier(misc, "cm_url_menu", cm_url_menu_str, "Open\nFind In Console\nMark Visited\nMark Unvisited\n--\nDelete\n--\nDelete All", sizeof(cm_url_menu_str));	
-	add_xml_identifier(misc, "cm_counters_menu", cm_counters_menu_str, "Delete Entry\n--\nReset Session Total\n--\nEnable Floating Messages For Category", sizeof(cm_counters_menu_str));
+	add_xml_identifier(misc, "cm_counters_menu", cm_counters_menu_str, "Delete Entry\n--\nReset Session Total\n--\nEnable Floating Messages For Category\n--\nPrint Category\nPrint All Categories\nPrint Just Session Information", sizeof(cm_counters_menu_str));
 	add_xml_identifier(misc, "cm_help_options", cm_help_options_str, "Right-click for options.", sizeof(cm_help_options_str));
-	add_xml_identifier(misc, "cm_npcname_menu", cm_npcname_menu_str, "Copy NPC Name", sizeof(cm_npcname_menu_str));
-	add_xml_identifier(misc, "cm_dialog_copy_menu", cm_dialog_copy_menu_str, "Exclude Responses\nRemove newlines", sizeof(cm_dialog_copy_menu_str));
+	add_xml_identifier(misc, "cm_npcname_menu", cm_npcname_menu_str, "Copy NPC Name\nSet Map Mark", sizeof(cm_npcname_menu_str));
+	add_xml_identifier(misc, "cm_dialog_copy_menu", cm_dialog_copy_menu_str, "Exclude Responses\nRemove Newlines", sizeof(cm_dialog_copy_menu_str));
 	add_xml_identifier(misc, "cm_minimap_menu", cm_minimap_menu_str, "--\nRotate Minimap\nPin Minimap\nOpen On Start", sizeof(cm_minimap_menu_str));
-	add_xml_identifier(misc, "cm_user_menu", cm_user_menu_str, "--\nShow Title\nDraw Border\nSmall Font\nStandard Menus\n--\nShow Commands\n--\nReload Menus\nDisable Menus", sizeof(cm_user_menu_str));
+	add_xml_identifier(misc, "cm_user_menu", cm_user_menu_str, "--\nMovable Window\nBorder On\nSmall Font\nStandard Menus\n--\nShow Commands\n--\nReload Menus\nDisable Menus", sizeof(cm_user_menu_str));
 	add_xml_identifier(misc, "cm_item_list_selected", cm_item_list_selected_str, "Edit quantity\n--\nDelete", sizeof(cm_item_list_selected_str));
 	add_xml_identifier(misc, "cm_item_list_names", cm_item_list_names_str, "Create new list\nRename active list\n--\nDelete active list\n--\nReload from file", sizeof(cm_item_list_names_str));
 	add_xml_identifier(misc, "cm_stats_bar_base", cm_stats_bar_base_str, "--\nAdd Bar\nRemove Bar", sizeof(cm_stats_bar_base_str));
-	add_xml_identifier(misc, "cm_recipe_menu", cm_recipe_menu_str, "Add additional recipe row\nClear selected recipe\nSort recipes by name", sizeof(cm_recipe_menu_str));
+	add_xml_identifier(misc, "cm_recipe_menu", cm_recipe_menu_str, "Add additional recipe row\nClear selected recipe\nDelete selected recipe\nSort recipes by name", sizeof(cm_recipe_menu_str));
 	add_xml_identifier(misc, "cm_manuwin_menu", cm_manuwin_menu_str, "\n--\nDisable key presses for window", sizeof(cm_manuwin_menu_str));
+	add_xml_identifier(misc, "cm_encycl_base", cm_encycl_base_str, "Encyclopedia Index\nSearch Encyclopedia Titles\nRepeat Last Search\nBookmark This Page\nUnbookmark This Page\nClear Bookmarks", sizeof(cm_encycl_base_str));
 	
 	/* user_menus.cpp */
 	add_xml_identifier(misc, "um_invalid_command", um_invalid_command_str, "Invalid command text", sizeof(um_invalid_command_str));
@@ -1486,7 +1643,8 @@ void init_help()
 
 	/* quest_log.cpp */
 	add_xml_identifier(misc, "cm_questlog_menu", cm_questlog_menu_str,
-		"Show all quests & entries\nOpen quest list window\nOpen NPC list window\nSelect NPCs, starting with none...\nShow just this NPC\n--\n"
+		"Show all quests & entries\nOpen quest list window\nOpen NPC list window\n"
+		"Select NPCs, starting with none...\nShow just this NPC\nShow just this quest\n--\n"
 		"Copy entry\nCopy all entries\nFind text...\nAdd entry...\n--\n"
 		"Select entry\nUnselect entry\nSelect all entries\nUnselect all entires\nShow only selected entries\n--\n"
 		"Delete entry\nUndelete entry\n--\n"
@@ -1494,7 +1652,7 @@ void init_help()
 		"Save changes", sizeof(cm_questlog_menu_str));
 	add_xml_identifier(misc, "cm_questlist_menu", cm_questlist_menu_str,
 		"Quest completed\nAdd selected entries to quest\n--\n"
-		"Hide completed quests\nDo not always open window\n", sizeof(cm_questlist_menu_str));
+		"Hide completed quests\nDo not always open window\nStart window left of entires\n", sizeof(cm_questlist_menu_str));
 	add_xml_identifier(misc, "questlog_find_prompt", questlog_find_prompt_str, "Text to Find", sizeof(questlog_find_prompt_str));
 	add_xml_identifier(misc, "questlog_add_npc_prompt", questlog_add_npc_prompt_str, "NPC name", sizeof(questlog_add_npc_prompt_str));	
 	add_xml_identifier(misc, "questlog_add_text_prompt", questlog_add_text_prompt_str, "Entry text", sizeof(questlog_add_text_prompt_str));	
@@ -1664,6 +1822,7 @@ void init_titles ()
 	add_xml_identifier (titles_str, "l_cursor_coords", label_cursor_coords, "Cursor position", sizeof(label_cursor_coords));
 	add_xml_identifier (titles_str, "l_mark_filter", label_mark_filter, "Mark filter", sizeof(label_mark_filter));
 	add_xml_identifier (titles_str, "game_version", game_version_str, "Eternal Lands Version %d.%d.%d%s", sizeof(game_version_str));
+	add_xml_identifier (titles_str, "game_version_prefix", game_version_prefix_str, "Eternal Lands Version", sizeof(game_version_prefix_str));
 	add_xml_identifier (titles_str, "b_send", button_send, "Send", sizeof(button_send));
 	add_xml_identifier (titles_str, "item_list_name", item_list_name_str, "Enter list name", sizeof(item_list_name_str));
 	add_xml_identifier (titles_str, "item_list_rename", item_list_rename_str, "Enter new name", sizeof(item_list_rename_str));
@@ -1753,6 +1912,9 @@ void load_translatables()
 #endif
 		xmlFreeDoc(file.file);
 	}
+#endif
+#ifdef ELC
+	save_named_strings(help_str,HELP_STR, "tooltips");
 #endif
 #ifndef WRITE_XML
 //There's no need for these variables to be hanging around any more...

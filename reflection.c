@@ -531,6 +531,8 @@ static __inline__ void disable_water_texgen()
 #endif //OPENGL_TRACE
 }
 
+#if 0
+/* not used */
 static __inline__ void disable_noise_texgen()
 {
 	ELglActiveTextureARB(GL_TEXTURE3);
@@ -544,6 +546,7 @@ static __inline__ void disable_noise_texgen()
 	CHECK_GL_ERRORS();
 #endif //OPENGL_TRACE
 }
+#endif
 
 void display_3d_reflection()
 {
@@ -1241,10 +1244,10 @@ void draw_water_background()
 	glDisable(GL_LIGHTING);
 	glDisable(GL_DEPTH_TEST);
 
-    if (dungeon)
-        glColor3f(0.00f, 0.21f, 0.34f);
-    else
-        glColor3fv(skybox_sky_color);
+	if (dungeon)
+		glColor3f(0.00f, 0.21f, 0.34f);
+	else
+		glColor3fv(skybox_sky_color);
 
 	if (use_frame_buffer && (water_shader_quality > 0) && show_reflection)
 	{

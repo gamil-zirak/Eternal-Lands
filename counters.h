@@ -1,6 +1,6 @@
 
 #ifndef __COUNTERS_H__
-#define __COUNTERS_H___
+#define __COUNTERS_H__
 
 #include "actors.h"
 
@@ -8,7 +8,10 @@
 extern "C" {
 #endif
 
-extern int harvesting;
+int now_harvesting(void);
+void clear_now_harvesting(void);
+void set_now_harvesting(void);
+
 extern char harvest_name[32];
 extern int counters_win;
 extern Uint32 disconnect_time;
@@ -21,6 +24,7 @@ void flush_counters();
 void cleanup_counters();
 void fill_counters_win();
 void reset_session_counters();
+void print_session_counters(const char *category);
 
 void increment_death_counter(actor *a);
 void increment_critfail_counter(char *name);

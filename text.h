@@ -68,6 +68,8 @@ extern int lines_to_show; /*!< number of lines to show at once */
 
 extern int show_timestamp;
 
+extern int dark_channeltext;
+
 extern int log_chat; /*!< flag stating whether to log server messages or not */
 
 extern ec_reference harvesting_effect_reference;
@@ -75,6 +77,24 @@ extern ec_reference harvesting_effect_reference;
 extern int emote_filter; //used to ignore text lines of emotes only
 
 extern int summoning_filter; //used to ignore text lines of summoning messages
+
+/*!
+ * \brief get the current value for seen PM and MODPM message
+ *
+ *	This count just increases until the clear function is called, the AFK
+ * 	state does not impact the count.
+ *
+ * \retval int the current count
+ * \callgraph
+ */
+extern int get_seen_pm_count(void);
+
+/*!
+ * \brief set the current value for seen PM and MODPM message to zero
+ *
+ * \callgraph
+ */
+extern void clear_seen_pm_count(void);
 
 /*!
  * \brief Allocate the character buffer for a text_message
@@ -413,18 +433,6 @@ void console_move_page_down();
  */
 void console_move_page_up();
 
-// XXX FIXME (Grum): obsolete
-///*!
-// * \ingroup interface_console
-// * \brief displays the console text
-// *
-// *      Switches to console mode and displays the txt.
-// *
-// * \callgraph
-// */
-//void display_console_text();
-
-
 /*!
  * \ingroup text_font
  * \brief Clears the text buffer
@@ -463,6 +471,32 @@ void cleanup_text_buffers(void);
  * \callgraph
  */
 void check_harvesting_effect(void);
+
+/*!
+ * \ingroup text_font
+ * \brief return special day status
+ *
+ * \retval       true is today is special
+ *
+ * \callgraph
+ */
+int today_is_special_day(void);
+
+/*!
+ * \ingroup text_font
+ * \brief set is special day
+ *
+ * \callgraph
+ */
+void set_today_is_special_day(void);
+
+/*!
+ * \ingroup text_font
+ * \brief clear is special day
+ *
+ * \callgraph
+ */
+void clear_today_is_special_day(void);
 
 
 #define LOG_TO_CONSOLE(color,buffer)	put_colored_text_in_buffer(color,CHAT_SERVER,(const Uint8*)buffer,-1) /*!< logs the text in buffer with the specified color to the console. */

@@ -45,17 +45,17 @@ int e3d_count, e3d_total;
 static int next_obj_3d = 0;
 
 #ifdef FASTER_MAP_LOAD
-void inc_objects_list_placeholders()
+void inc_objects_list_placeholders(void)
 {
 	next_obj_3d++;
 }
 #else
-void clear_objects_list_placeholders()
+void clear_objects_list_placeholders(void)
 {
 	objects_list_placeholders = 0;
 }
 
-void inc_objects_list_placeholders()
+void inc_objects_list_placeholders(void)
 {
 	objects_list_placeholders++;
 }
@@ -79,7 +79,7 @@ static __inline__ void build_clouds_planes(object3d* obj)
 	obj->clouds_planes[1][3] = obj->y_pos / texture_scale;
 }
 
-void disable_buffer_arrays()
+void disable_buffer_arrays(void)
 {
 	if (use_vertex_buffers)
 	{
@@ -499,8 +499,10 @@ int add_e3d_at_id(int id, const char* file_name,
 		//replace it with the null object, to avoid object IDs corruption
 #ifdef OLD_MISC_OBJ_DIR
 		returned_e3d = load_e3d_cache("./3dobjects/misc_objects/badobject.e3d");
+		my_strncp(fname, "./3dobjects/misc_objects/badobject.e3d", sizeof(fname));
 #else
 		returned_e3d = load_e3d_cache("./3dobjects/badobject.e3d");
+		my_strncp(fname, "./3dobjects/badobject.e3d", sizeof(fname));
 #endif
 		if (!returned_e3d)
 			return -1; // umm, not even found the place holder, this is teh SUCK!!!
@@ -669,7 +671,7 @@ char * get_3dobject_at_location(float x_pos, float y_pos)
 }
 #endif // NEW_SOUND
 
-void display_objects()
+void display_objects(void)
 {	
 	CHECK_GL_ERRORS();
 	glEnable(GL_CULL_FACE);
@@ -716,7 +718,7 @@ void display_objects()
 	CHECK_GL_ERRORS();
 }
 
-void display_ground_objects()
+void display_ground_objects(void)
 {
 	CHECK_GL_ERRORS();
 	glEnable(GL_CULL_FACE);
@@ -761,7 +763,7 @@ void display_ground_objects()
 	CHECK_GL_ERRORS();
 }
 
-void display_alpha_objects()
+void display_alpha_objects(void)
 {
 	CHECK_GL_ERRORS();
 	glEnable(GL_COLOR_MATERIAL);
@@ -804,7 +806,7 @@ void display_alpha_objects()
 	CHECK_GL_ERRORS();
 }
 
-void display_blended_objects()
+void display_blended_objects(void)
 {	
 	CHECK_GL_ERRORS();
 	glEnable(GL_CULL_FACE);
@@ -876,7 +878,7 @@ void destroy_3d_object(int i)
 	}
 }
 
-void destroy_all_3d_objects()
+void destroy_all_3d_objects(void)
 {
 	int i;
 
@@ -885,6 +887,8 @@ void destroy_all_3d_objects()
 		if (objects_list[i])
 		{
 			ec_remove_obstruction_by_object3d(objects_list[i]);
+			if(!cache_find_item(cache_e3d, objects_list[i]->file_name))
+				destroy_e3d(objects_list[i]->e3d_data);
 			free(objects_list[i]);
 			objects_list[i] = NULL; // kill any reference to it
 		}
@@ -898,31 +902,34 @@ Uint32 free_e3d_va(e3d_object *e3d_id)
 {
 	set_all_intersect_update_needed(main_bbox_tree);
 
-	if (e3d_id != NULL)
+	if (e3d_id == NULL)
+		return 0;
+
+	if (e3d_id->vertex_data != NULL)
 	{
-		if (e3d_id->vertex_data != NULL)
-		{
-			free(e3d_id->vertex_data);
-			e3d_id->vertex_data = NULL;
-		}
-		if (e3d_id->indices != NULL)
-		{
-			free(e3d_id->indices);
-			e3d_id->indices = NULL;
-		}
-		if (e3d_id->vertex_vbo != 0)
-		{
-			ELglDeleteBuffersARB(1, &e3d_id->vertex_vbo);
-			e3d_id->vertex_vbo = 0;
-		}
-		if (e3d_id->indices_vbo != 0)
-		{
-			ELglDeleteBuffersARB(1, &e3d_id->indices_vbo);
-			e3d_id->indices_vbo = 0;
-		}
+		free(e3d_id->vertex_data);
+		e3d_id->vertex_data = NULL;
+	}
+	if (e3d_id->indices != NULL)
+	{
+		free(e3d_id->indices);
+		e3d_id->indices = NULL;
+	}
+	if (e3d_id->vertex_vbo != 0)
+	{
+		ELglDeleteBuffersARB(1, &e3d_id->vertex_vbo);
+		e3d_id->vertex_vbo = 0;
+	}
+	if (e3d_id->indices_vbo != 0)
+	{
+		ELglDeleteBuffersARB(1, &e3d_id->indices_vbo);
+		e3d_id->indices_vbo = 0;
 	}
 
-	return (e3d_id->cache_ptr->size - sizeof(*e3d_id));
+	if (e3d_id->cache_ptr != NULL)
+		return (e3d_id->cache_ptr->size - sizeof(*e3d_id));
+	else
+		return sizeof(*e3d_id);
 }
 
 void destroy_e3d(e3d_object *e3d_id)
