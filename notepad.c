@@ -164,7 +164,7 @@ static int popup_ok_button_handler(widget_list *w,
 }
 
 static int popup_keypress_handler(window_info *win,
-	int UNUSED(mx), int UNUSED(my), Uint32 key, Uint32 unikey)
+	int UNUSED(mx), int UNUSED(my), Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	INPUT_POPUP *ipu = ipu_from_window(win);
 	if (ipu == NULL) return 0;
@@ -195,7 +195,7 @@ static int popup_keypress_handler(window_info *win,
 			// set the flag again.
 			int res;
 			tfw->Flags &= ~TEXT_FIELD_NO_KEYPRESS;
-			res = widget_handle_keypress (tfw, mx - tfw->pos_x, my - tfw->pos_y, key, unikey);
+			res = widget_handle_keypress (tfw, mx - tfw->pos_x, my - tfw->pos_y, key, unikey, mods);
 			tfw->Flags |= TEXT_FIELD_NO_KEYPRESS;
 			return res;
 		}

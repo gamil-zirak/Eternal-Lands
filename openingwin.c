@@ -5,6 +5,7 @@
 #include "consolewin.h"
 #include "draw_scene.h"
 #include "elconfig.h"
+#include "events.h"
 #include "gamewin.h"
 #include "gl_init.h"
 #include "init.h"
@@ -31,7 +32,7 @@ void opening_win_update_zoom () {
 
 int display_opening_handler ()
 {
-	if (SDL_GetAppState () & SDL_APPACTIVE)
+	if (el_active)
 	{
 		int msg, offset, iline;
 		
@@ -68,14 +69,14 @@ int click_opening_handler ()
 	return 1;
 }
 
-int keypress_opening_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_opening_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 #ifndef MAP_EDITOR2
-	int alt_on = key & ELW_ALT;
-	int ctrl_on = key & ELW_CTRL;
+	int alt_on = mods & KMOD_ALT;
+	int ctrl_on = mods & KMOD_CTRL;
 #endif
 
-	if(check_quit_or_fullscreen(key))
+	if(check_quit_or_fullscreen(key, mods))
 	{
 		return 1;
 	}

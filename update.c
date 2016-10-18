@@ -253,7 +253,7 @@ void    do_updates()
 		return;
 	}
 	// start the background process
-	SDL_CreateThread(&do_threaded_update, NULL);
+	SDL_CreateThread(&do_threaded_update, "UpdatecheckThread", NULL);
 }
 
 
@@ -490,7 +490,7 @@ void http_threaded_get_file(char *server, char *path, FILE *fp, Uint8 *md5, Uint
 	// NOTE: it is up to the EVENT handler to close the handle & free the spec pointer in data1
 
 	// start the download in the background
-	thread_list[spec->thread_index] = SDL_CreateThread(&http_get_file_thread_handler, (void *) spec);
+	thread_list[spec->thread_index] = SDL_CreateThread(&http_get_file_thread_handler, "DownloadThread", (void *) spec);
 }
 
 
@@ -675,7 +675,7 @@ CHECK_GL_ERRORS();
 
 int display_update_root_handler (window_info *win)
 {
-	if (SDL_GetAppState () & SDL_APPACTIVE)
+	if (el_active)
 	{	
 		draw_console_pic (cons_text);
 		draw_update_interface (win->len_x, win->len_y);
@@ -697,16 +697,14 @@ int click_update_root_handler (window_info *win, int mx, int my, Uint32 flags)
 	return 0;
 }
 
-int keypress_update_root_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_update_root_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
-
 	// first, try to see if we pressed Alt+x, to quit.
-	if ( check_quit_or_fullscreen (key) )
+	if ( check_quit_or_fullscreen (key, mods) )
 	{
 		return 1;
 	}
-	else if (keysym == SDLK_RETURN)
+	else if (key == SDLK_RETURN)
 	{
 		exit_now = 1;
 		return 1;

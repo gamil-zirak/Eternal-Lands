@@ -651,18 +651,16 @@ int click_minimap_handler(window_info * win, int mx, int my, Uint32 flags)
 	return 0;
 }
 
-int keypress_minimap_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_minimap_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
-
 	if (is_within_radius(mx,my-ELW_TITLE_HEIGHT,float_minimap_size/2,float_minimap_size/2,float_minimap_size/2))
 	{
-		if((keysym == SDLK_KP_PLUS) || (keysym == SDLK_PAGEUP))
+		if((key == SDLK_KP_PLUS) || (key == SDLK_PAGEUP))
 		{
 			increase_zoom();
 			return 1;
 		}
-		else if ((keysym == SDLK_KP_MINUS) ||  (keysym == SDLK_PAGEDOWN))
+		else if ((key == SDLK_KP_MINUS) ||  (key == SDLK_PAGEDOWN))
 		{
 			decrease_zoom();
 			return 1;

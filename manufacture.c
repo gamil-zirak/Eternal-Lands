@@ -813,23 +813,23 @@ static void select_recipe(int the_recipe)
 }
 
 /* key presses in the window used for a recipe name search string */
-static int keypress_recipe_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_recipe_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	char keychar = tolower(key_to_char(unikey));
 	last_recipe_key_time = SDL_GetTicks();
-	if ((keychar == SDLK_RETURN) && (key & ELW_CTRL))
+	if ((key == SDLK_RETURN) && (mods & KMOD_CTRL))
 	{
 		select_recipe(cur_recipe);
 		return 1;
 	}
-	if ((keychar == '`') || (key & ELW_CTRL) || (key & ELW_ALT))
+	if ((keychar == '`') || (mods & KMOD_CTRL) || (mods & KMOD_ALT))
 		return 0;
-	if (keychar == SDLK_ESCAPE)
+	if (key == SDLK_ESCAPE)
 	{
 		clear_recipe_filter();
 		return 1;
 	}
-	if (string_input(recipe_name_filter, sizeof(recipe_name_filter), keychar) || (keychar == SDLK_RETURN))
+	if (string_input(recipe_name_filter, sizeof(recipe_name_filter), key, keychar) || (key == SDLK_RETURN))
 	{
 		if (strlen(recipe_name_filter))
 		{
@@ -863,13 +863,13 @@ static int keypress_recipe_handler(window_info *win, int mx, int my, Uint32 key,
 
 
 /* keypress in main window is passed to recipe window search */
-static int keypress_manufacture_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_manufacture_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	if (!disable_manuwin_keypress && (recipe_win > -1) && (recipe_win < windows_list.num_windows))
 	{
 		window_info *win_recp = &windows_list.window[recipe_win];
 		int current_recipes_shown = recipes_shown; // so we don't undo keypress_recipe_handler() work
-		if (win_recp != NULL && keypress_recipe_handler(win_recp, mx, my, key, unikey))
+		if (win_recp != NULL && keypress_recipe_handler(win_recp, mx, my, key, unikey, mods))
 		{
 			if (!recipes_shown && (current_recipes_shown == recipes_shown))
 			    toggle_recipe_window();

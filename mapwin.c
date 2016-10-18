@@ -9,6 +9,7 @@
 #include "chat.h"
 #include "draw_scene.h"
 #include "elwindows.h"
+#include "events.h"
 #include "gamewin.h"
 #include "gl_init.h"
 #include "global.h"
@@ -135,7 +136,7 @@ int click_map_handler (window_info *win, int mx, int my, Uint32 flags)
 int display_map_handler (window_info * win)
 {
 	// are we actively drawing things?
-	if (SDL_GetAppState () & SDL_APPACTIVE)
+	if (el_active)
 	{
 		draw_hud_interface ();
 		Leave2DMode ();
@@ -187,11 +188,11 @@ int mouseover_map_handler (window_info *win, int mx, int my)
 	return mouse_over_minimap;
 }	
 
-int keypress_map_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_map_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	Uint8 ch = key_to_char (unikey);
 
-	if (ch == SDLK_RETURN && adding_mark && input_text_line.len > 0)
+	if (key == SDLK_RETURN && adding_mark && input_text_line.len > 0)
 	{
 		int i;
 
@@ -210,20 +211,20 @@ int keypress_map_handler (window_info *win, int mx, int my, Uint32 key, Uint32 u
 		clear_input_line ();
 	}
 	// does the user want to cancel a mapmark?
-	else if (ch == SDLK_ESCAPE && adding_mark)
+	else if (key == SDLK_ESCAPE && adding_mark)
 	{
 		adding_mark = 0;
 		clear_input_line ();
 	}
 	// enable, disable or reset the mark filter
-	else if ((key == K_MARKFILTER) || (mark_filter_active && (ch == SDLK_ESCAPE)))
+	else if ((key == K_MARKFILTER) || (mark_filter_active && (key == SDLK_ESCAPE)))
 	{
-		if (!mark_filter_active || (ch == SDLK_ESCAPE))
+		if (!mark_filter_active || (key == SDLK_ESCAPE))
 			mark_filter_active ^= 1;
 		memset(mark_filter_text, 0, sizeof(char)*MARK_FILTER_MAX_LEN);
 	}
 	// now try the keypress handler for all root windows
-	else if ( keypress_root_common (key, unikey) )
+	else if ( keypress_root_common (key, unikey, mods) )
 	{
 		return 1;
 	}
@@ -243,7 +244,7 @@ int keypress_map_handler (window_info *win, int mx, int my, Uint32 key, Uint32 u
 	}
 	else if (mark_filter_active && !adding_mark)
 	{
-		string_input(mark_filter_text, MARK_FILTER_MAX_LEN, ch);
+		string_input(mark_filter_text, MARK_FILTER_MAX_LEN, key, ch);
 	}
 	else
 	{
@@ -254,7 +255,7 @@ int keypress_map_handler (window_info *win, int mx, int my, Uint32 key, Uint32 u
 			hide_window (map_root_win);
 			show_window (console_root_win);
 		}
-		else if ( !text_input_handler (key, unikey) )
+		else if ( !text_input_handler (key, unikey, mods) )
 		{
 			// nothing we can handle
 			return 0;

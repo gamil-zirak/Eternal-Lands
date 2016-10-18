@@ -770,9 +770,9 @@ int switch_video(int mode, int full_screen)
 
 	int index = mode - 1;
 
-	int flags = SDL_OPENGL;
+	int flags = SDL_WINDOW_OPENGL;
 	if (full_screen)
-		flags |= SDL_FULLSCREEN;
+		flags |= SDL_WINDOW_FULLSCREEN;
 
 	if(mode == 0 && !full_screen) {
 		win_width = video_user_width;
@@ -1224,7 +1224,7 @@ void change_gamma(float *pointer, float *value)
 {
 	*pointer= *value;
 	if(video_mode_set && !disable_gamma_adjust) {
-		SDL_SetGamma(*value, *value, *value);
+		SDL_SetWindowBrightness(el_gl_window, *value);
 	}
 }
 
@@ -2422,13 +2422,13 @@ int display_elconfig_handler(window_info *win)
 	return 1;
 }
 
-int spinbutton_onkey_handler(widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey)
+int spinbutton_onkey_handler(widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	if(widget != NULL) {
 		int i;
 		spinbutton *button;
 
-		if (!(key&ELW_ALT) && !(key&ELW_CTRL)) {
+		if (!(mods&KMOD_ALT) && !(mods&KMOD_CTRL)) {
 			for(i= 0; i < our_vars.no; i++) {
 				if(our_vars.var[i]->widgets.widget_id == widget->id) {
 					button= widget->widget_info;

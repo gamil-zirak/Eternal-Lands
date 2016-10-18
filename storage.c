@@ -669,19 +669,19 @@ int mouseover_storage_handler(window_info *win, int mx, int my)
 }
 
 
-static int keypress_storage_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_storage_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	char keychar = tolower(key_to_char(unikey));
-	if (disable_storage_filter || (keychar == '`') || (key & ELW_CTRL) || (key & ELW_ALT))
+	if (disable_storage_filter || (keychar == '`') || (mods & KMOD_CTRL) || (mods & KMOD_ALT))
 		return 0;
-	if (keychar == SDLK_ESCAPE)
+	if (key == SDLK_ESCAPE)
 	{
 		filter_item_text[0] = '\0';
 		filter_item_text_size = 0;
 		return 1;
 	}
 	item_info_help_if_needed();
-	if (string_input(filter_item_text, sizeof(filter_item_text), keychar))
+	if (string_input(filter_item_text, sizeof(filter_item_text), key, keychar))
 	{
 		filter_item_text_size = strlen(filter_item_text);
 		if (filter_item_text_size > 0)

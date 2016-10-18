@@ -14,10 +14,10 @@ _CXXFLAGS=$(PLATFORM) -O3 -fomit-frame-pointer -ffast-math -pipe $(OPTIONS) -DND
 
 # WARNING: the order is important! If -lX uses -lY, then you must list -lX before -lY (sic!)
 LDFLAGS= $(EXTRA_LIBS) $(foreach FEATURE, $(FEATURES), $($(FEATURE)_LIBS)) \
-	-llibxml2 -lSDL_net -lSDL_image -lsdl -lopenal32 -lglu32 -lopengl32 -liconv -lcal3d -lm -lstdc++ \
+	-llibxml2 -llibSDL2_net -llibSDL2_image -lsdl2 -lopenal32 -lglu32 -lopengl32 -liconv -lcal3d -lm -lstdc++ \
 	-lz -lpng -lvorbisfile -lvorbis -logg
 _LDFLAGS=-lopengl32 -lz
-STATICLIBS=libs/libSDL_net.a libs/libSDL.a libs/libSDL_image.a libs/libopenal.a libs/libvorbisfile.a libs/libvorbis.a libs/libogg.a libs/libxml2.a libs/libcal3d.a libs/libpng.a libs/libasound.a $(EXTRA_STATICLIBS)
+STATICLIBS=libs/libSDL2_net.a libs/libSDL2.a libs/libSDL2_image.a libs/libopenal.a libs/libvorbisfile.a libs/libvorbis.a libs/libogg.a libs/libxml2.a libs/libcal3d.a libs/libpng.a libs/libasound.a $(EXTRA_STATICLIBS)
 
 # the objects we need
 ENCYCLOPEDIA_COBJ = books/fontdef.o books/parser.o books/symbol.o books/typesetter.o sort.o symbol_table.o
@@ -134,7 +134,7 @@ $(TMP_LIB): $(OBJS)
 $(EXE): main.o $(TMP_LIB)
 	windres elc_private.rc elc_private.o
 	$(LINK) $(CFLAGS) $< -L. -lelc $(LDFLAGS) elc_private.o -o $(EXE)
-	strip -s $(EXE)
+#	strip -s $(EXE)
 
 #recompile on Makefile or conf change
 .depend $(OBJS): Makefile.win make.conf

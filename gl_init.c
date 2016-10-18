@@ -32,6 +32,8 @@ Uint32 flags;
 int window_width=640;
 int window_height=480;
 
+SDL_Window *el_gl_window;
+
 int desktop_width;
 int desktop_height;
 
@@ -188,12 +190,12 @@ void check_gl_mode()
 {
 	char str[400];
 
-	flags = SDL_OPENGL;
+	flags = SDL_WINDOW_OPENGL;
 	if(full_screen) {
-		flags |= SDL_FULLSCREEN;
+		flags |= SDL_WINDOW_FULLSCREEN;
 	}
 	SDL_GL_SetAttribute( SDL_GL_STENCIL_SIZE, 8);
-
+#ifdef ML
 #ifdef	FSAA
 	if (fsaa > 1)
 	{
@@ -216,7 +218,7 @@ void check_gl_mode()
 			safe_snprintf (vid_mode_str, sizeof (vid_mode_str), "%ix%ix%i", window_width, window_height, bpp);
 			safe_snprintf(str,sizeof(str),no_stencil_str,vid_mode_str);
 			LOG_TO_CONSOLE(c_red1,str);
-            LOG_ERROR("%s\n",str);
+			LOG_ERROR("%s\n",str);
 
 			SDL_GL_SetAttribute( SDL_GL_STENCIL_SIZE, 0);
 			have_stencil=0;
@@ -247,25 +249,27 @@ void check_gl_mode()
 
 		}
 	else have_stencil=1;
-
+#endif  /* ML */
 }
 
 void init_video()
 {
 	char str[400];
 	int rgb_size[3];
+	SDL_DisplayMode current;
 
 	setup_video_mode(full_screen, video_mode);
 
 	/* Detect the display depth */
 	if(!bpp)
 		{
-			if ( SDL_GetVideoInfo()->vfmt->BitsPerPixel <= 8 )
+			SDL_GetCurrentDisplayMode(0, &current);
+			if ( SDL_BITSPERPIXEL(current.format) <= 8 )
 				{
 					bpp = 8;
 				}
 			else
-				if ( SDL_GetVideoInfo()->vfmt->BitsPerPixel <= 16 )
+				if ( SDL_BITSPERPIXEL(current.format) <= 16 )
 					{
 						bpp = 16;  /* More doesn't seem to work */
 					}
@@ -310,7 +314,7 @@ void init_video()
 #endif
 #ifdef OSX
 	// enable V-SYNC
-	SDL_GL_SetAttribute( SDL_GL_SWAP_CONTROL, 1 );
+	SDL_GL_SetSwapInterval(1);
 #endif
 	SDL_GL_SetAttribute( SDL_GL_ALPHA_SIZE, 0 );
 	SDL_GL_SetAttribute( SDL_GL_DEPTH_SIZE, 24 );
@@ -326,13 +330,14 @@ void init_video()
 #endif	/* FSAA */
 	check_gl_mode();
 
-	SDL_WM_SetIcon(SDL_LoadBMP("icon.bmp"), NULL);
+	SDL_SetWindowIcon(el_gl_window, SDL_LoadBMP("icon.bmp"));
 	/* Set the window manager title bar */
 
 #ifdef	FSAA
 	if (fsaa > 1)
 	{
-		if (!SDL_SetVideoMode(window_width, window_height, bpp, flags))
+		el_gl_window = SDL_CreateWindow("Eternal Lands", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, flags);
+		if (!el_gl_window)
 		{
 			safe_snprintf(str, sizeof(str), "Can't use fsaa mode x%d, disabling it.", fsaa);
 			LOG_TO_CONSOLE(c_yellow1, str);
@@ -345,7 +350,8 @@ void init_video()
 #endif	/* FSAA */
 
 	//try to find a stencil buffer (it doesn't always work on Linux)
-	if(!SDL_SetVideoMode(window_width, window_height, bpp, flags))
+	el_gl_window = SDL_CreateWindow("Eternal Lands", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, flags);
+	if(!el_gl_window)
     	{
 			LOG_TO_CONSOLE(c_red1,no_hardware_stencil_str);
 			LOG_ERROR("%s\n",no_hardware_stencil_str);
@@ -356,7 +362,8 @@ void init_video()
             }
 			SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,16);
 			SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE,0);
-			if(!SDL_SetVideoMode( window_width, window_height, bpp, flags))
+			el_gl_window = SDL_CreateWindow("Eternal Lands", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, flags);
+			if(!el_gl_window)
 			    {
 					LOG_ERROR("%s: %s\n", fail_opengl_mode, SDL_GetError());
 					SDL_Quit();
@@ -365,6 +372,9 @@ void init_video()
 			have_stencil=0;
 
     	}
+
+	SDL_GL_CreateContext(el_gl_window);
+
 #ifdef WINDOWS
 	//try to see if we get hardware acceleration, or the windows generic shit
 	{
@@ -395,8 +405,10 @@ void init_video()
 			SDL_GL_SetAttribute( SDL_GL_DEPTH_SIZE, 24);
 			SDL_GL_SetAttribute( SDL_GL_STENCIL_SIZE, 0);
 			SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1);
-			if(full_screen)flags=SDL_OPENGL|SDL_FULLSCREEN;
-			SDL_SetVideoMode(window_width, window_height, bpp, flags);
+			SDL_DestroyWindow(el_gl_window);
+			if(full_screen)flags=SDL_WINDOW_OPENGL|SDL_WINDOW_FULLSCREEN;
+			el_gl_window = SDL_CreateWindow("Eternal Lands", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, flags);
+			SDL_GL_CreateContext(el_gl_window);
 			have_stencil=0;
 	
 			my_string=(GLubyte *)glGetString(GL_RENDERER);
@@ -421,13 +433,15 @@ void init_video()
 				SDL_GL_SetAttribute( SDL_GL_DEPTH_SIZE, 24);
 				SDL_GL_SetAttribute( SDL_GL_STENCIL_SIZE, 0);
 				SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1);
-				flags=SDL_OPENGL|SDL_FULLSCREEN;
+				flags=SDL_WINDOW_OPENGL|SDL_WINDOW_FULLSCREEN;
 				full_screen=1;
 				video_mode=2;
 				window_width=640;
 				window_height=480;
 				bpp=32;
-				SDL_SetVideoMode(window_width, window_height, bpp, flags);
+				SDL_DestroyWindow(el_gl_window);
+				el_gl_window = SDL_CreateWindow("Eternal Lands", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, flags);
+				SDL_GL_CreateContext(el_gl_window);
 				//see if it worked...
 				my_string=(GLubyte *)glGetString(GL_RENDERER);
                 if (my_string == NULL) {
@@ -453,7 +467,7 @@ void init_video()
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 	//glDepthFunc(GL_LEQUAL);
-    glEnable(GL_TEXTURE_2D);
+	glEnable(GL_TEXTURE_2D);
 	glShadeModel(GL_SMOOTH);
 	glFrontFace(GL_CCW);
 	glCullFace(GL_BACK);
@@ -477,8 +491,6 @@ void init_video()
 		glDisable(GL_POLYGON_SMOOTH);
 	}
 #endif
-	SDL_EnableKeyRepeat(200, 100);
-	SDL_EnableUNICODE(1);
 	build_video_mode_array();
 	SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &have_stencil);
 	last_texture=-1;	//no active texture
@@ -1189,7 +1201,7 @@ void toggle_full_screen()
 	switch_video(video_mode, full_screen);
 	build_video_mode_array();
 	if (!disable_gamma_adjust)
-		SDL_SetGamma(gamma_var, gamma_var, gamma_var);
+		SDL_SetWindowBrightness(el_gl_window, gamma_var);
 	SDL_SetModState(KMOD_NONE); // force ALL keys up
 #endif
 }

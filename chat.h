@@ -177,11 +177,12 @@ void switch_to_chat_tab(int id, char click);
  *
  * \param key
  * \param unikey
+ * \param mods
  *
  * \retval int 1 if handled, 0 otherwise
  * \callgraph
  */
-int root_key_to_input_field (Uint32 key, Uint32 unikey);
+int root_key_to_input_field (Uint32 key, Uint32 unikey, Uint16 mods);
 
 /*!
  * \ingroup chat_window
@@ -319,7 +320,7 @@ void update_chat_win_buffers(void);
 
 void cleanup_chan_names(void);
 
-int chat_input_key(widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey);
+int chat_input_key(widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods);
 
 int resize_chat_handler(window_info *win, int width, int height);
 

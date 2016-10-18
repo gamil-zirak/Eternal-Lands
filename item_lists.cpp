@@ -54,7 +54,7 @@ namespace ItemLists
 	static int click_itemlist_handler(window_info *win, int mx, int my, Uint32 flags);
 	static int mouseover_itemlist_handler(window_info *win, int mx, int my);
 	static int hide_itemlist_handler(window_info *win);
-	static int keypress_itemlist_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey);
+	static int keypress_itemlist_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods);
 	static int resize_itemlist_handler(window_info *win, int new_width, int new_height);
 	static void new_list_handler(const char *input_text, void *data);
 	static void rename_list_handler(const char *input_text, void *data);
@@ -221,7 +221,7 @@ namespace ItemLists
 			void reset_position(void);
 			void make_active_visable(void);
 			void cm_names_pre_show(void);
-			int keypress(char the_key);
+			int keypress(Uint32 key, char the_key);
 			void resized_name_panel(window_info *win);
 			void reset_pickup_fail_time(void) { pickup_fail_time = SDL_GetTicks(); }
 		private:
@@ -1317,16 +1317,16 @@ CHECK_GL_ERRORS();
 
 	//	Key presses in the window used for a search string
 	//
-	int List_Window::keypress(char the_key)
+	int List_Window::keypress(Uint32 key, char the_key)
 	{
 		last_key_time = SDL_GetTicks();
-		if (the_key == SDLK_ESCAPE)
+		if (key == SDLK_ESCAPE)
 		{
 			filter[0] = '\0';
 			last_key_time = 0;
 			return 1;
 		}
-		if (string_input(filter, sizeof(filter), the_key) || (the_key == SDLK_RETURN))
+		if (string_input(filter, sizeof(filter), key, the_key) || (key == SDLK_RETURN))
 		{
 			if (strlen(filter))
 			{
@@ -1477,12 +1477,12 @@ CHECK_GL_ERRORS();
 		return 1;
 	}
 
-	static int keypress_itemlist_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+	static int keypress_itemlist_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 	{
 		char keychar = tolower(key_to_char(unikey));
-		if ((keychar == '`') || (key & ELW_CTRL) || (key & ELW_ALT))
+		if ((keychar == '`') || (mods & KMOD_CTRL) || (mods & KMOD_ALT))
 			return 0;
-		return Vars::win()->keypress(keychar);
+		return Vars::win()->keypress(key, keychar);
 	}
 
 	static int resize_itemlist_handler(window_info *win, int new_width, int new_height)

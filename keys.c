@@ -2,7 +2,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <ctype.h>
-#include <SDL_keysym.h>
+#include <SDL_keycode.h>
 #include "errors.h"
 #include "keys.h"
 #include "asc.h"
@@ -19,7 +19,7 @@ Uint32 K_QUIT=ALT|'x';
 // so don't use Ctrl-q as a symbol to exit
 Uint32 K_QUIT_ALT=ALT|'x';
 #elif OSX
-Uint32 K_QUIT_ALT=KMOD_LMETA|'q';
+Uint32 K_QUIT_ALT=KMOD_LGUI|'q';
 #else
 Uint32 K_QUIT_ALT=CTRL|'q';
 #endif
@@ -105,9 +105,9 @@ Uint32 K_CUT=CTRL|'x';
 Uint32 K_COPY=CTRL|'c';
 Uint32 K_PASTE=CTRL|'v';
 #else
-Uint32 K_CUT=KMOD_LMETA|'x';
-Uint32 K_COPY=KMOD_LMETA|'c';
-Uint32 K_PASTE=KMOD_LMETA|'v';
+Uint32 K_CUT=KMOD_LGUI|'x';
+Uint32 K_COPY=KMOD_LGUI|'c';
+Uint32 K_PASTE=KMOD_LGUI|'v';
 #endif
 Uint32 K_COPY_ALT=CTRL|SDLK_INSERT;
 Uint32 K_PASTE_ALT=SHIFT|SDLK_INSERT;
@@ -247,20 +247,21 @@ static void add_key(Uint32 *key, Uint32 n)
 {
 	switch (n)
 	{
-		case 303:
-		case 304:
+		case SDLK_LSHIFT:
+		case SDLK_RSHIFT:
 			*key |= SHIFT;
 			break;
-		case 305:
-		case 306:
+		case SDLK_LCTRL:
+		case SDLK_RCTRL:
 			*key |= CTRL;
 			break;
-		case 307:
-		case 308:
+		case SDLK_LALT:
+		case SDLK_RALT:
 			*key |= ALT;
 			break;
 		default:
-			*key = (n & 0xFFFF) | (*key &0xFFFF0000);
+//			*key = (n & 0xFFFF) | (*key &0xFFFF0000);
+			*key = n | (*key &0xFFFF0000);
         }
 }
 
@@ -286,7 +287,7 @@ static Uint32 CRC32(const char *data, int len)
 	return ~result;
 }
 
-static Uint16 get_key_code(const char *key)
+static Uint32 get_key_code(const char *key)
 {
 	int len = strlen(key);
 
@@ -299,149 +300,139 @@ static Uint16 get_key_code(const char *key)
 		Uint32 crc = CRC32(key,len);
 		switch(crc){
 			case 0x414243d2: //UP
-				return 273;
+				return SDLK_UP;
 			case 0x8b9c5c32: //F1
-				return 282;
+				return SDLK_F1;
 			case 0x86df7aeb: //F2
-				return 283;
+				return SDLK_F2;
 			case 0x821e675c: //F3
-				return 284;
+				return SDLK_F3;
 			case 0x9c593759: //F4
-				return 285;
+				return SDLK_F4;
 			case 0x98982aee: //F5
-				return 286;
+				return SDLK_F5;
 			case 0x95db0c37: //F6
-				return 287;
+				return SDLK_F6;
 			case 0x911a1180: //F7
-				return 288;
+				return SDLK_F7;
 			case 0xa955ac3d: //F8
-				return 289;
+				return SDLK_F8;
 			case 0xad94b18a: //F9
-				return 290;
+				return SDLK_F9;
 			case 0xbbde3454: //F10
-				return 291;
+				return SDLK_F10;
 			case 0xbf1f29e3: //F11
-				return 292;
+				return SDLK_F11;
 			case 0xb25c0f3a: //F12
-				return 293;
+				return SDLK_F12;
 			case 0xb69d128d: //F13
-				return 294;
+				return SDLK_F13;
 			case 0xa8da4288: //F14
-				return 295;
+				return SDLK_F14;
 			case 0xac1b5f3f: //F15
-				return 296;
+				return SDLK_F15;
 			case 0xe5b332af: //BACKSPACE
-				return 8;
+				return SDLK_BACKSPACE;
 			case 0x3d6742da: //TAB
-				return 9;
+				return SDLK_TAB;
 			case 0xe4f512ce: //CLEAR
-				return 12;
+				return SDLK_CLEAR;
 			case 0xe5c642f: //RETURN
-				return 13;
+				return SDLK_RETURN;
 			case 0x1a3dbcf4: //PAUSE
-				return 19;
+				return SDLK_PAUSE;
 			case 0xb23e322f: //ESCAPE
-				return 27;
+				return SDLK_ESCAPE;
 			case 0xe0ea4208: //SPACE
-				return 32;
+				return SDLK_SPACE;
 			case 0x3f048816: //DELETE
-				return 127;
+				return SDLK_DELETE;
 			case 0x5dd541: //KP0
-				return 256;
+				return SDLK_KP_0;
 			case 0x49cc8f6: //KP1
-				return 257;
+				return SDLK_KP_1;
 			case 0x9dfee2f: //KP2
-				return 258;
+				return SDLK_KP_2;
 			case 0xd1ef398: //KP3
-				return 259;
+				return SDLK_KP_3;
 			case 0x1359a39d: //KP4
-				return 260;
+				return SDLK_KP_4;
 			case 0x1798be2a: //KP5
-				return 261;
+				return SDLK_KP_5;
 			case 0x1adb98f3: //KP6
-				return 262;
+				return SDLK_KP_6;
 			case 0x1e1a8544: //KP7
-				return 263;
+				return SDLK_KP_7;
 			case 0x265538f9: //KP8
-				return 264;
+				return SDLK_KP_8;
 			case 0x2294254e: //KP9
-				return 265;
+				return SDLK_KP_9;
 			case 0xc9681663: //KP_PERIOD
-				return 266;
+				return SDLK_KP_PERIOD;
 			case 0xf2032002: //KP_DIVIDE
-				return 267;
+				return SDLK_KP_DIVIDE;
 			case 0xc69c9177: //KP_MULTIPLY
-				return 268;
+				return SDLK_KP_MULTIPLY;
 			case 0xe05a3b75: //KP_MINUS
-				return 269;
+				return SDLK_KP_MINUS;
 			case 0x7a14ede0: //KP_PLUS
-				return 270;
+				return SDLK_KP_PLUS;
 			case 0xb95fb1fa: //KP_ENTER
-				return 271;
+				return SDLK_KP_ENTER;
 			case 0x997d27b6: //KP_EQUALS
-				return 272;
+				return SDLK_KP_EQUALS;
 			case 0x412c789a: //DOWN
-				return 274;
+				return SDLK_DOWN;
 			case 0xcfd43bcf: //RIGHT
-				return 275;
+				return SDLK_RIGHT;
 			case 0x14618acf: //LEFT
-				return 276;
+				return SDLK_LEFT;
 			case 0xb448467c: //INSERT
-				return 277;
+				return SDLK_INSERT;
 			case 0xd59321ba: //HOME
-				return 278;
+				return SDLK_HOME;
 			case 0x863456b7: //END
-				return 279;
+				return SDLK_END;
 			case 0xd541afe1: //PAGEUP
-				return 280;
+				return SDLK_PAGEUP;
 			case 0x77a53c61: //PAGEDOWN
-				return 281;
+				return SDLK_PAGEDOWN;
 			case 0x8563dfd4: //NUMLOCK
-				return 300;
+				return SDLK_NUMLOCKCLEAR;
 			case 0x4b601de5: //CAPSLOCK
-				return 301;
+				return SDLK_CAPSLOCK;
 			case 0x7b642f: //SCROLLOCK
-				return 302;
+				return SDLK_SCROLLLOCK;
 			case 0x6fa8765e: //RSHIFT
-				return 303;
+				return SDLK_RSHIFT;
 			case 0x5a59f8b9: //LSHIFT
-				return 304;
+				return SDLK_LSHIFT;
 			case 0xc535c663: //RCTRL
-				return 305;
+				return SDLK_RCTRL;
 			case 0xb5e083f0: //LCTRL
-				return 306;
+				return SDLK_LCTRL;
 			case 0xf7a834fb: //RALT
-				return 307;
+				return SDLK_RALT;
 			case 0x39b9e58e: //LALT
-				return 308;
+				return SDLK_LALT;
 			case 0x34796737: //RMETA
-				return 309;
+				return SDLK_RGUI;
 			case 0x44ac22a4: //LMETA
-				return 310;
-			case 0x8ec5890c: //LSUPER
-				return 311;
-			case 0xbb3407eb: //RSUPER
-				return 312;
+				return SDLK_LGUI;
 			case 0x2d5a7586: //MODE
-				return 313;
-			case 0x87140862: //COMPOSE
-				return 314;
+				return SDLK_MODE;
 			case 0x512a6d4b: //HELP
-				return 315;
+				return SDLK_HELP;
 			case 0xdc87c39e: //PRINT
-				return 316;
+				return SDLK_PRINTSCREEN;
 			case 0xbdf2d984: //SYSREQ
-				return 317;
-			case 0xd318f49: //BREAK
-				return 318;
+				return SDLK_SYSREQ;
 			case 0x46854e9d: //MENU
-				return 319;
+				return SDLK_MENU;
 			case 0x8758b6ec: //POWER
-				return 320;
-			case 0x1e43eaa9: //EURO
-				return 321;
+				return SDLK_POWER;
 			case 0xdf6ba7e: //UNDO
-				return 322;
+				return SDLK_UNDO;
 			default:
 				return SDLK_UNKNOWN;
 		}
@@ -488,7 +479,7 @@ void read_key_config()
 	char line[512];
 	el_file_ptr f;
 	size_t num_keys = sizeof(key_store)/sizeof(key_store_entry);
-	Uint32 last_key_value = SDLK_LAST;
+	Uint32 last_key_value = SDLK_SLEEP;
 	size_t i;
 
 	f = el_open_custom("key.ini");
@@ -499,7 +490,7 @@ void read_key_config()
 		el_close(f);
 	}
 
-	// look for unassigned keys and assign one up from SDLK_LAST
+	// look for unassigned keys and assign one up from SDLK_SLEEP (SDLK_LAST no longer exists, SDLK_SLEEP is the last in the list)
 	for (i=0; i<num_keys; i++)
 		if (*key_store[i].value == 0)
 			*key_store[i].value = ++last_key_value;

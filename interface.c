@@ -349,9 +349,9 @@ void build_video_mode_array()
 	int flags;
 
 	if (full_screen)
-		flags=SDL_OPENGL|SDL_FULLSCREEN;
+		flags=SDL_WINDOW_OPENGL|SDL_WINDOW_FULLSCREEN;
 	else
-		flags=SDL_OPENGL;
+		flags=SDL_WINDOW_OPENGL;
 
 	for(i = 0; i < video_modes_count; i++)
 	{
@@ -365,7 +365,7 @@ void build_video_mode_array()
 #endif
 			) 
 		{
-			if (SDL_VideoModeOK(video_modes[i].width, video_modes[i].height, video_modes[i].bpp, flags))
+//ML			if (SDL_VideoModeOK(video_modes[i].width, video_modes[i].height, video_modes[i].bpp, flags))
 				video_modes[i].flags.supported = 1;
 		}
 
@@ -454,7 +454,7 @@ void draw_2d_thing_r(float u_start,float v_start,float u_end,float v_end,int x_s
 	glVertex3i(x_end,y_end,0);
 }
 
-void add_char_to_username(unsigned char ch)
+void add_char_to_username(Uint32 key, unsigned char ch)
 {
 	if (((ch>=48 && ch<=57) || (ch>=65 && ch<=90) || (ch>=97 && ch<=122) || (ch=='_'))
 		&& username_text_length < MAX_USERNAME_LENGTH - 1)		// MAX_USERNAME_LENGTH includes the null terminator
@@ -463,7 +463,7 @@ void add_char_to_username(unsigned char ch)
 		username_str[username_text_length+1]=0;
 		username_text_length++;
 	}
-	if(ch==SDLK_DELETE || ch==SDLK_BACKSPACE)
+	if(key==SDLK_DELETE || key==SDLK_BACKSPACE)
 	{
 		if (username_text_length > 0)
 			username_text_length--;
@@ -473,7 +473,7 @@ void add_char_to_username(unsigned char ch)
 	}
 }
 
-void add_char_to_password(unsigned char ch)
+void add_char_to_password(Uint32 key, unsigned char ch)
 {
 	if ((ch>=32 && ch<=126) && password_text_length < MAX_USERNAME_LENGTH - 1)		// MAX_USERNAME_LENGTH includes the null terminator
 	{
@@ -483,7 +483,7 @@ void add_char_to_password(unsigned char ch)
 		display_password_str[password_text_length+1]=0;
 		password_text_length++;
 	}
-	if (ch==SDLK_DELETE || ch==SDLK_BACKSPACE)
+	if (key==SDLK_DELETE || key==SDLK_BACKSPACE)
 	{
 		if (password_text_length > 0)
 			password_text_length--;
