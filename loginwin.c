@@ -381,33 +381,33 @@ int click_login_handler (window_info *win, int mx, int my, Uint32 flags)
 	return 1;
 }
 
-int keypress_login_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_login_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	Uint8 ch = key_to_char (unikey);
 	
 	// First check key presses common to all root windows. Many of these
 	// don't make sense at this point, but it should be harmless.
-	if ( keypress_root_common (key, unikey) )
+	if ( keypress_root_common (key, unikey, mods) )
 	{
 		return 1;
 	}	
-	else if (ch == SDLK_RETURN && username_str[0] && password_str[0])
+	else if (key == SDLK_RETURN && username_str[0] && password_str[0])
 	{
 		log_in_error_str[0] = '\0';
 		send_login_info();
 	}
-	else if (ch == SDLK_TAB)
+	else if (key == SDLK_TAB)
 	{
 		username_box_selected = !username_box_selected;
 		password_box_selected = !password_box_selected;
 	}
 	else if (username_box_selected)
 	{
-		add_char_to_username (ch);
+		add_char_to_username (key, ch);
 	} 
 	else
 	{
-		add_char_to_password (ch);
+		add_char_to_password (key, ch);
 	}
 	
 	return 1;

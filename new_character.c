@@ -16,6 +16,7 @@
 #include "cursors.h"
 #include "draw_scene.h"
 #include "elconfig.h"
+#include "events.h"
 #include "gamewin.h"
 #include "gl_init.h"
 #include "global.h"
@@ -428,7 +429,7 @@ int display_newchar_handler (window_info *win)
 	
 	reset_under_the_mouse();
 
-	if (SDL_GetAppState() & SDL_APPACTIVE)
+	if (el_active)
 	{
 
 		draw_global_light ();
@@ -565,13 +566,13 @@ int click_newchar_handler (window_info *win, int mx, int my, Uint32 flags)
 	return 1; // we captured this mouseclick
 }
 
-int keypress_newchar_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_newchar_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	static int last_time=0;
-	int alt_on = key & ELW_ALT;
-	int ctrl_on = key & ELW_CTRL;
+	int alt_on = mods & KMOD_ALT;
+	int ctrl_on = mods & KMOD_CTRL;
 
-	if ( check_quit_or_fullscreen (key) ) {
+	if ( check_quit_or_fullscreen (key, mods) ) {
 		return 1;
 	} else if(disconnected && !alt_on && !ctrl_on){
 		connect_to_server();
@@ -867,7 +868,7 @@ int display_namepass_handler (window_info * win)
 	return 1;
 }
 
-int keypress_namepass_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_namepass_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uinit16 mods)
 {
 	Uint8 ch = key_to_char (unikey);
 	int ret=0;
@@ -893,16 +894,12 @@ int keypress_namepass_handler (window_info *win, int mx, int my, Uint32 key, Uin
 			ret=1;	//Reused to show that a letter has been added
 		}
 	} 
-	else if (unikey == SDLK_TAB || unikey == SDLK_RETURN)
+	else if (key == SDLK_TAB || key == SDLK_RETURN)
 	{
 		active++;
 		if(active>2) active=0;
 	}
-#ifndef OSX
-	else if (unikey == SDLK_BACKSPACE && t->pos>0)
-#else
         else if (key == SDLK_BACKSPACE && t->pos>0)
-#endif
 	{
 		t->pos--;
 		if (isdigit (t->str[t->pos])) numbers_in_name--;
@@ -1532,7 +1529,7 @@ int password_draw(widget_list *w)
 	return 1;
 }
 
-int keypress_namepass_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_namepass_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	Uint8 ch = key_to_char (unikey);
 	int ret=0;
@@ -1558,16 +1555,12 @@ int keypress_namepass_handler (window_info *win, int mx, int my, Uint32 key, Uin
 			ret=1;	//Reused to show that a letter has been added
 		}
 	}
-	else if (unikey == SDLK_TAB || unikey == SDLK_RETURN)
+	else if (key == SDLK_TAB || key == SDLK_RETURN)
 	{
 		active++;
 		if(active>2) active=0;
 	}
-#ifndef OSX
-	else if (unikey == SDLK_BACKSPACE && t->pos>0)
-#else
         else if (key == SDLK_BACKSPACE && t->pos>0)
-#endif
 	{
 		t->pos--;
 		if (isdigit (t->str[t->pos])) numbers_in_name--;

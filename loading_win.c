@@ -245,7 +245,7 @@ void update_loading_win (char *text, float progress_increase)
 		Enter2DMode ();
 		display_window (loading_win);
 		Leave2DMode ();
-		SDL_GL_SwapBuffers ();
+		SDL_GL_SwapWindow(el_gl_window);
 	}
 }
 

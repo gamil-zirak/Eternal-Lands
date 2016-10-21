@@ -210,7 +210,7 @@ typedef	struct	{
 #define	ELW_SHIFT		SHIFT
 #define	ELW_CTRL		CTRL
 #define	ELW_ALT			ALT
-#define ELW_META		KMOD_LMETA
+#define ELW_META		KMOD_LGUI
 #define ELW_RIGHT_MOUSE		(1<<28)
 #define ELW_MID_MOUSE		(1<<27)	// future expansion
 #define ELW_LEFT_MOUSE		(1<<26)
@@ -305,10 +305,11 @@ int		drag_windows(int mx, int my, int dx, int dy);
  * \param y         y coordinate of the mouse position where the click occurred
  * \param key       the key or key combination that is pressed
  * \param unikey    the unicode value of \a key
+ * \param mods      the modifiers of \a key
  * \retval int
  * \callgraph
  */
-int		keypress_in_windows(int x, int y, Uint32 key, Uint32 unikey);
+int		keypress_in_windows(int x, int y, Uint32 key, Uint32 unikey, Uint16 mods);
 
 /*!
  * \ingroup elwindows

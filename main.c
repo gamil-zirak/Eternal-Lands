@@ -155,7 +155,7 @@ int start_rendering()
 	queue_initialise(&message_queue);
 	network_thread_data[0] = message_queue;
 	network_thread_data[1] = &done;
-	network_thread = SDL_CreateThread(get_message_from_server, network_thread_data);
+	network_thread = SDL_CreateThread(get_message_from_server, "NetworkThread", network_thread_data);
 
 	/* Loop until done. */
 	while( !done )
@@ -289,7 +289,7 @@ int start_rendering()
 	// attempt to restart if requested
 	if(restart_required > 0){
 		LOG_INFO("Restarting %s", win_command_line);
-		SDL_CreateThread(system, win_command_line);
+		SDL_CreateThread(system, "MainThread", win_command_line);
 	}
 #endif  //WINDOWS
 */

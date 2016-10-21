@@ -18,6 +18,7 @@
 #include "draw_scene.h"
 #include "elwindows.h"
 #include "errors.h"
+#include "events.h"
 #include "gamewin.h"
 #include "gl_init.h"
 #include "hud.h"
@@ -675,7 +676,7 @@ int rules_root_win = -1;
 
 int display_rules_root_handler (window_info *win)
 {
-	if (SDL_GetAppState () & SDL_APPACTIVE)
+	if (el_active)
 	{
 		if(virt_win_offset < 0) virt_win_offset=0;
 		draw_console_pic (cons_text);
@@ -752,36 +753,34 @@ int click_rules_root_handler (window_info *win, int mx, int my, Uint32 flags)
 	return 0;
 }
 
-int keypress_rules_root_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_rules_root_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
-
 	// first, try to see if we pressed Alt+x, to quit.
-	if ( check_quit_or_fullscreen (key) )
+	if ( check_quit_or_fullscreen (key, mods) )
 	{
 		return 1;
 	}
-	else if (keysym == SDLK_DOWN)
+	else if (key == SDLK_DOWN)
 	{
 		vscrollbar_scroll_down(rules_root_win, rules_root_scroll_id);
 		rules_root_scroll_handler();
 	}
-	else if (keysym == SDLK_UP)
+	else if (key == SDLK_UP)
 	{
 		vscrollbar_scroll_up(rules_root_win, rules_root_scroll_id);
 		rules_root_scroll_handler();
 	}
-	else if (keysym == SDLK_PAGEUP)
+	else if (key == SDLK_PAGEUP)
 	{
 		vscrollbar_scroll_up(rules_root_win, rules_root_scroll_id);
 		rules_root_scroll_handler();
 	}
-	else if (keysym == SDLK_PAGEDOWN)
+	else if (key == SDLK_PAGEDOWN)
 	{
 		vscrollbar_scroll_down(rules_root_win, rules_root_scroll_id);
 		rules_root_scroll_handler();
 	}
-	else if (keysym == SDLK_RETURN && countdown <= 0 && (read_all_rules))
+	else if (key == SDLK_RETURN && countdown <= 0 && (read_all_rules))
 	{
 		switch_rules_to_next ();
 	}

@@ -1,4 +1,4 @@
-#include <stdlib.h>
+﻿#include <stdlib.h>
 #include <math.h>
 #include <string.h>
 #include <SDL.h>
@@ -11,6 +11,7 @@
 #include "cursors.h"
 #include "draw_scene.h"
 #include "errors.h"
+#include "events.h"
 #include "gl_init.h"
 #include "global.h"
 #include "interface.h"
@@ -864,7 +865,7 @@ void draw_actor_overtext( actor* actor_ptr )
 
 	//-- decrease display time
 	actor_ptr->current_displayed_text_time_left -= (cur_time-last_time);
-	if(!(SDL_GetAppState()&SDL_APPACTIVE)) return;	// not actually drawing, fake it
+	if(!el_active) return;	// not actually drawing, fake it
 
 	textwidth = ((float)get_string_width((unsigned char*)(actor_ptr->current_displayed_text))*(SMALL_INGAME_FONT_X_LEN*zoom_level*name_zoom/3.0))/12.0;
 	textheight = (0.06f*zoom_level/3.0)*4;
@@ -1393,7 +1394,7 @@ void display_actors(int banner, int render_pass)
 		disable_actor_animation_program();
 	}
 
-	if (banner && (SDL_GetAppState() & SDL_APPACTIVE))
+	if (banner && el_active)
 	{
 		if (use_shadow_mapping)
 		{

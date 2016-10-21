@@ -92,7 +92,7 @@ Uint8 key_to_char (Uint32 unikey);
  * \retval int 1 if key used, 0 if not used
  *
  */
-int string_input(char *text, size_t maxlen, char ch);
+int string_input(char *text, size_t maxlen, Uint32 key,char ch);
 
 /*!
  * \ingroup events
@@ -101,11 +101,12 @@ int string_input(char *text, size_t maxlen, char ch);
  *      Checks if a keypress is for quitting the game or toggling the full screen mode.
  *
  * \param key
+ * \param mods
  * \retval int
  * \callgraph
  */
+int check_quit_or_fullscreen (Uint32 key, Uint16 mods);
 
-int check_quit_or_fullscreen (Uint32 key);
 /*!
  * \ingroup events
  * \brief Common handler for normal character input
@@ -114,10 +115,11 @@ int check_quit_or_fullscreen (Uint32 key);
  *
  * \param key
  * \param unikey
+ * \param mods
  * \retval int
  * \callgraph
  */
-int text_input_handler (Uint32 key, Uint32 unikey);
+int text_input_handler (Uint32 key, Uint32 unikey, Uint16 mods);
 
 /*!
  * \ingroup events
@@ -127,10 +129,11 @@ int text_input_handler (Uint32 key, Uint32 unikey);
  *
  * \param key
  * \param unikey
+ * \param mods
  * \retval int
  * \callgraph
  */
-int keypress_root_common (Uint32 key, Uint32 unikey);
+int keypress_root_common (Uint32 key, Uint32 unikey, Uint16 mods);
 
 /*!
  * \ingroup events

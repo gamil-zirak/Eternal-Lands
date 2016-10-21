@@ -1197,7 +1197,7 @@ int mouseover_encyclopedia_handler(window_info *win, int mx, int my)
 
 /*	Add shortcut keypresses for search
 */
-int keypress_encyclopedia_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_encyclopedia_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	char keychar = tolower(key_to_char(unikey));
 	if ((key == K_MARKFILTER) || (keychar=='/'))

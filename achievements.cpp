@@ -838,14 +838,14 @@ static int achievements_mouseover_handler(window_info *win, int mx, int my)
 
 //	A common display handler callback for keypress activity.
 //
-int achievements_keypress_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int achievements_keypress_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	if (!win)
 		return 0;
-	if ((key & 0xffff) == SDLK_ESCAPE) // close window if Escape pressed
+	if (key == SDLK_ESCAPE) // close window if Escape pressed
 	{
 		do_window_close_sound();
-		if (key & ELW_CTRL)
+		if (mods & KMOD_CTRL)
 			Achievements_System::get_instance()->hide_all();
 		else
 			hide_window(win->window_id);

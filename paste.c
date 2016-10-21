@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <SDL_syswm.h>
+#include "gl_init.h"
 #include "paste.h"
 #include "chat.h"
 #include "translate.h"
@@ -125,9 +126,9 @@ void copy_to_clipboard(const char* text)
 		return;
 
 	SDL_VERSION (&info.version);
-	if (SDL_GetWMInfo (&info))
+	if (SDL_GetWindowWMInfo (el_gl_window, &info))
 	{
-		if (OpenClipboard (info.window))
+		if (OpenClipboard (info.info.win.window))
 		{
 			HGLOBAL hCopy = GlobalAlloc (GMEM_MOVEABLE, 1+strlen (text));
 			char* copy = GlobalLock (hCopy);

@@ -301,7 +301,7 @@ int display_accept_buddy_handler(window_info *win)
 	}
 }
 
-int name_input_keypress_handler(widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey)
+int name_input_keypress_handler(widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	if(unikey == '\r' && strlen((char*)buddy_name_buffer) > 0) {
 		return click_add_buddy_handler(widget, mx, my, ELW_LEFT_MOUSE);

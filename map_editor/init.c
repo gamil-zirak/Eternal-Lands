@@ -130,8 +130,6 @@ void init_stuff()
 	glClearColor( 0.0, 0.0, 0.0, 0.0 );
 	glClearStencil(0);
 
-	SDL_EnableKeyRepeat (200, 100);
-
 	seed = time (NULL);
   	srand (seed);
 

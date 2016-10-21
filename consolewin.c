@@ -9,6 +9,7 @@
 #include "console.h"
 #include "draw_scene.h"
 #include "elwindows.h"
+#include "events.h"
 #include "gamewin.h"
 #include "gl_init.h"
 #include "global.h"
@@ -80,7 +81,7 @@ static int display_console_handler (window_info *win)
 	static int msg = 0, offset = 0;
 
 	// are we actively drawing things?
-	if (SDL_GetAppState () & SDL_APPACTIVE)
+	if (el_active)
 	{
 		set_font(chat_font);	// switch to the chat font
 		if (console_text_changed)
@@ -131,16 +132,14 @@ static int display_console_handler (window_info *win)
 	return 1;
 }
 
-static int keypress_console_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_console_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
-
 	// first try the keypress handler for all root windows
-	if ( keypress_root_common (key, unikey) )
+	if ( keypress_root_common (key, unikey, mods) )
 	{
 		return 1;
 	}
-	else if(keysym == SDLK_UP)
+	else if(key == SDLK_UP)
  	{
 		if (total_nr_lines > nr_console_lines + scroll_up_lines)
 		{
@@ -148,7 +147,7 @@ static int keypress_console_handler (window_info *win, int mx, int my, Uint32 ke
 			console_text_changed = 1;
 		}
  	}
-	else if (keysym == SDLK_DOWN)
+	else if (key == SDLK_DOWN)
  	{
 		if(scroll_up_lines > 0)
 		{
@@ -160,24 +159,24 @@ static int keypress_console_handler (window_info *win, int mx, int my, Uint32 ke
 	{
 		do_tab_complete(&input_text_line);
 	}
-	else if (key&ELW_ALT && keysym == SDLK_PAGEUP && total_nr_lines > nr_console_lines + scroll_up_lines)
+	else if (mods&KMOD_ALT && key == SDLK_PAGEUP && total_nr_lines > nr_console_lines + scroll_up_lines)
 	{
 		scroll_up_lines = total_nr_lines - nr_console_lines;
 		console_text_changed = 1;
 	}
-	else if (key&ELW_ALT && keysym == SDLK_PAGEDOWN && scroll_up_lines > 0)
+	else if (mods&KMOD_ALT && key == SDLK_PAGEDOWN && scroll_up_lines > 0)
 	{
 		scroll_up_lines = 0;
 		console_text_changed = 1;
 	}
-	else if (keysym == SDLK_PAGEUP && total_nr_lines > nr_console_lines + scroll_up_lines)
+	else if (key == SDLK_PAGEUP && total_nr_lines > nr_console_lines + scroll_up_lines)
 	{
 		scroll_up_lines += nr_console_lines - 1;
 		if (nr_console_lines + scroll_up_lines > total_nr_lines)
 			scroll_up_lines = total_nr_lines - nr_console_lines;
 		console_text_changed = 1;
 	}
-	else if (keysym == SDLK_PAGEDOWN && scroll_up_lines > 0)
+	else if (key == SDLK_PAGEDOWN && scroll_up_lines > 0)
 	{
 		scroll_up_lines -= nr_console_lines - 1;
 		if (scroll_up_lines < 0)
@@ -215,7 +214,7 @@ static int keypress_console_handler (window_info *win, int mx, int my, Uint32 ke
 			if ( !get_show_window (quickspell_win) )
 				show_window (quickspell_win);
 		}
-		else if ( !text_input_handler (key, unikey) )
+		else if ( !text_input_handler (key, unikey, mods) )
 		{
 			// nothing we can handle
 			return 0;

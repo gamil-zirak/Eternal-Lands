@@ -1009,10 +1009,10 @@ static int click_quest_filter_handler(window_info *win, int mx, int my, Uint32 f
 
 //	Move the window scroll position to match the key pressed with the first character of the npc name.
 //
-static int keypress_quest_filter_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_quest_filter_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	char keychar = tolower(static_cast<char>(unikey));
-	if ((key & ELW_CTRL) || (key & ELW_ALT) || (keychar<'a') || (keychar>'z'))
+	if ((mods & KMOD_CTRL) || (mods & KMOD_ALT) || (keychar<'a') || (keychar>'z'))
 		return 0;
 	size_t line = 0;
 	for (std::map<std::string,int>::iterator i = filter_map.begin(); i != filter_map.end(); ++i, line++)
@@ -1698,7 +1698,7 @@ static int questlog_click(window_info *win, int mx, int my, Uint32 flags)
 }
 
 
-static int keypress_questlog_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int keypress_questlog_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
 	char keychar = tolower(static_cast<char>(unikey));
 	if ((key == K_MARKFILTER) || (keychar=='/'))

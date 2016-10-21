@@ -6,6 +6,7 @@
 #ifndef __GL_INIT_H__
 #define __GL_INIT_H__
 
+#include <SDL.h>
 #include "load_gl_extensions.h"
 
 #ifdef __cplusplus
@@ -17,6 +18,8 @@ extern "C" {
 extern int window_width; /*!< width of the window */
 extern int window_height; /*!< height of the window */
 /*! @} */
+
+extern SDL_Window *el_gl_window;
 
 extern int bpp; /*!< color depth to use */
 extern int video_mode; /*!< currently selected video mode */

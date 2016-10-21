@@ -68,18 +68,6 @@ void draw_new_char_screen();
 
 /*!
  * \ingroup interface_newchar
- * \brief   Adds the char \a ch to the selected input box in the character creation interface.
- *
- *      The char \a ch will get added to either of the username, password or password confirmation input fields, depending on which input field is currently selected.
- *
- * \param ch    the char to add
- *
- * \callgraph
- */
-void add_char_to_new_character(unsigned char ch);
-
-/*!
- * \ingroup interface_newchar
  * \brief   Verifies the username and password from the character creation interface and calls \ref send_login_info.
  *
  *      The username and password are verified and copied before \ref send_login_info is called.

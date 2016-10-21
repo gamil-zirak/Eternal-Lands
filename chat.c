@@ -704,9 +704,8 @@ int chat_scroll_click (widget_list *widget, int mx, int my, Uint32 flags)
         return 0;
 }
 
-int chat_input_key (widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey)
+int chat_input_key (widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
 	text_field *tf;
 	text_message *msg;
 
@@ -716,12 +715,12 @@ int chat_input_key (widget_list *widget, int mx, int my, Uint32 key, Uint32 unik
 	tf = (text_field *) widget->widget_info;
 	msg = tf->buffer;
 
-	if ( (!(key & ELW_CTRL) && ( (keysym == SDLK_UP) || (keysym == SDLK_DOWN) ) ) ||
-		(keysym == SDLK_LEFT) || (keysym == SDLK_RIGHT) || (keysym == SDLK_HOME) ||
-		(keysym == SDLK_END) || (keysym == SDLK_DELETE && tf->cursor < msg->len) ) {
+	if ( (!(mods & KMOD_CTRL) && ( (key == SDLK_UP) || (key == SDLK_DOWN) ) ) ||
+		(key == SDLK_LEFT) || (key == SDLK_RIGHT) || (key == SDLK_HOME) ||
+		(key == SDLK_END) || (key == SDLK_DELETE && tf->cursor < msg->len) ) {
 		//pass it along. the defaults are good enough
 		widget->Flags &= ~TEXT_FIELD_NO_KEYPRESS;
-		text_field_keypress (widget, mx, my, key, unikey);
+		text_field_keypress (widget, mx, my, key, unikey, mods);
 		widget->Flags |= TEXT_FIELD_NO_KEYPRESS;
 	}
 	else
@@ -858,13 +857,12 @@ void parse_input(char *data, int len)
 }
 
 
-int root_key_to_input_field (Uint32 key, Uint32 unikey)
+int root_key_to_input_field (Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
 	Uint8 ch = key_to_char (unikey);
 	text_field *tf;
 	text_message *msg;
-	int alt_on = key & ELW_ALT, ctrl_on = key & ELW_CTRL;
+	int alt_on = mods & KMOD_ALT, ctrl_on = mods & KMOD_CTRL;
 
 	if(input_widget == NULL || (input_widget->Flags & TEXT_FIELD_EDITABLE) == 0) {
 		return 0;
@@ -873,11 +871,11 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 	tf = input_widget->widget_info;
 	msg = &(tf->buffer[tf->msg]);
 
-	if (keysym == SDLK_ESCAPE)
+	if (key == SDLK_ESCAPE)
 	{
 		clear_input_line();
 	}
-	else if (ch == SDLK_RETURN && msg->len > 0)
+	else if (key == SDLK_RETURN && msg->len > 0)
 	{
 		parse_input(msg->data, msg->len);
 		add_line_to_history((char*)msg->data, msg->len);
@@ -895,7 +893,7 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 		msg->wrap_width = 0;
 		tf->nr_lines = rewrap_message (msg, input_widget->size, input_widget->len_x - 2 * tf->x_space, &tf->cursor);
 	}
-	else if (ch == SDLK_BACKSPACE || ch == SDLK_DELETE
+	else if (key == SDLK_BACKSPACE || key == SDLK_DELETE
 #ifdef OSX
 	             || ch == 127
 #endif
@@ -913,7 +911,7 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 		// we do want to call it directly. So we clear the flag,
 		// and reset it afterwards.
 		input_widget->Flags &= ~TEXT_FIELD_NO_KEYPRESS;
-		text_field_keypress (input_widget, 0, 0, key, unikey);
+		text_field_keypress (input_widget, 0, 0, key, unikey, mods);
 		input_widget->Flags |= TEXT_FIELD_NO_KEYPRESS;
 	}
 	else if (key == K_TABCOMPLETE && input_text_line.len > 0)
@@ -922,7 +920,7 @@ int root_key_to_input_field (Uint32 key, Uint32 unikey)
 	}
 	else if (get_show_window(console_root_win))
 	{
-		if (!chat_input_key (input_widget, 0, 0, key, unikey))
+		if (!chat_input_key (input_widget, 0, 0, key, unikey, mods))
 			return 0;
 	}
 	else

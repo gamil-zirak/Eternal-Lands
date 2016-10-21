@@ -23,8 +23,6 @@
 #include <map>
 #include <algorithm>
 
-#include <SDL/SDL_types.h>
-
 #include "client_serv.h"
 #include "init.h"
 #include "items.h"

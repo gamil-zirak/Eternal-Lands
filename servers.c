@@ -332,16 +332,14 @@ int click_server_sel_root_handler (window_info *win, int mx, int my, Uint32 flag
 	return 0;
 }
 
-int keypress_server_sel_root_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+int keypress_server_sel_root_handler (window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	Uint16 keysym = key & 0xffff;
-
 	// first, try to see if we pressed Alt+x, to quit.
 	if (check_quit_or_fullscreen(key))
 	{
 		return 1;
 	}
-	else if (keysym == SDLK_RETURN)
+	else if (key == SDLK_RETURN)
 	{
 		// Ummm?
 		return 1;

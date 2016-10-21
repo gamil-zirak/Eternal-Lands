@@ -1380,9 +1380,10 @@ int text_field_set_text_color (int window_id, Uint32 widget_id, float r, float g
  * \param   	my the mouse y position relative to the widgets origin
  * \param	key the SDL key code
  * \param	unikey the unicode representation of the key pressed
+ * \param	mods the SDL key modifiers
  * retval	1 if the event is handled 0 otherwise
  */
-int text_field_keypress (widget_list *w, int mx, int my, Uint32 key, Uint32 unikey);
+int text_field_keypress (widget_list *w, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods);
 
 /*!
  * \brief set cursor_line according to cursor position in current message.
@@ -1397,7 +1398,7 @@ void text_field_find_cursor_line(text_field* tf);
 #define P_TEXT      1
 #define P_NONE      2
 
-int pword_keypress (widget_list *w, int mx, int my, Uint32 key, Uint32 unikey);
+int pword_keypress (widget_list *w, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods);
 unsigned char * pword_field_get(widget_list *w);
 int pword_field_add (int window_id, int (*OnInit)(), Uint16 x, Uint16 y, Uint16 lx, Uint16 ly, Uint8 status, unsigned char *buffer, int buffer_size);
 int pword_field_add_extended (int window_id, Uint32 wid, int (*OnInit)(), Uint16 x, Uint16 y, Uint16 lx, Uint16 ly, Uint8 status, float size, float r, float g, float b, unsigned char *buffer, int buffer_size);
@@ -1472,9 +1473,10 @@ int widget_handle_drag (widget_list *widget, int mx, int my, Uint32 flags, int d
  * \param   	my the mouse y position relative to the widgets origin
  * \param	key the SDL key code
  * \param	unikey the unicode representation of the key pressed
+ * \param	mods the SDL key modifiers
  * \retval 	1 if the event is handled, 0 otherwise
  */
-int widget_handle_keypress (widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey);
+int widget_handle_keypress (widget_list *widget, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods);
 
 // XML Windows
 

@@ -215,9 +215,10 @@ void draw_console_pic(int which_texture);
  *
  *      Adds the char \a ch to the \ref username_str. If \a ch is either of delete or backspace key, the last char in \ref username_str will get deleted.
  *
+ * \param key   the SDL key
  * \param ch    the char to add to \ref username_str
  */
-void add_char_to_username(unsigned char ch);
+void add_char_to_username(Uint32 key, unsigned char ch);
 
 /*!
  * \ingroup interface
@@ -225,9 +226,10 @@ void add_char_to_username(unsigned char ch);
  *
  *      Adds the char \a ch to the \ref password_str. If \a ch is either of delete or backspace key, the last char in \ref password_str will get deleted.
  *
+ * \param key   the SDL key
  * \param ch    the char to add to \ref password_str
  */
-void add_char_to_password(unsigned char ch);
+void add_char_to_password(Uint32 key, unsigned char ch);
 
 /*!
  * \ingroup display_2d

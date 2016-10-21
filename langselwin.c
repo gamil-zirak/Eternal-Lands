@@ -280,9 +280,9 @@ static int click_langsel_handler(window_info *win, int mx, int my, Uint32 flags)
 }
 
 
-static int langsel_keypress_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey)
+static int langsel_keypress_handler(window_info *win, int mx, int my, Uint32 key, Uint32 unikey, Uint16 mods)
 {
-	if (check_quit_or_fullscreen(key))
+	if (check_quit_or_fullscreen(key, mods))
 	{
 		return 1;
 	}

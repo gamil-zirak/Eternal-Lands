@@ -48,11 +48,7 @@ void init_gl_extensions()
 void init_gl()
 {
     int rgb_size[3];
-#ifdef DEBUG
-    if( SDL_Init(SDL_INIT_VIDEO|SDL_INIT_NOPARACHUTE) == -1 )
-#else
     if( SDL_Init(SDL_INIT_VIDEO) == -1 )
-#endif
         {
             char str[120];
             sprintf(str, "Couldn't initialize SDL: %s\n", SDL_GetError());
@@ -142,8 +138,6 @@ void handle_window_resize()
 	glEnable(GL_NORMALIZE);
 	glClearColor( 0.0, 0.0, 0.0, 0.0 );
 	glClearStencil(0);
-	SDL_EnableKeyRepeat (200, 100);
-	SDL_EnableUNICODE(1);
 	
 #ifndef	NEW_TEXTURES
 	for (i = 0; i < TEXTURE_CACHE_MAX; i++)
