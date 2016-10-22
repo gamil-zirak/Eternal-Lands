@@ -102,10 +102,10 @@ int HandleEvent (SDL_Event *event)
 
 #if !defined(WINDOWS) && !defined(OSX)
 		case SDL_SYSWMEVENT:
-			if (event->syswm.msg->event.xevent.type == SelectionNotify)
-				finishpaste(event->syswm.msg->event.xevent.xselection);
-			else if (event->syswm.msg->event.xevent.type == SelectionRequest)
-				process_copy(&event->syswm.msg->event.xevent.xselectionrequest);
+			if (event->syswm.x11->event.xevent.type == SelectionNotify)
+				finishpaste(event->syswm.x11->event.xevent.xselection);
+			else if (event->syswm.x11->event.xevent.type == SelectionRequest)
+				process_copy(&event->syswm.x11->event.xevent.xselectionrequest);
 			break;
 #endif
 

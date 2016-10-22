@@ -195,7 +195,7 @@ static void start_paste_from_target(widget_list *widget, int clipboard)
 	Atom property;
 
 	SDL_VERSION(&wminfo.version);
-	if (SDL_GetWMInfo(&wminfo) && wminfo.subsystem == SDL_SYSWM_X11)
+	if (SDL_GetWindowWMInfo(el_gl_window, &wminfo) && wminfo.subsystem == SDL_SYSWM_X11)
 	{
 		wminfo.info.x11.lock_func();
 
@@ -248,7 +248,7 @@ static void copy_to_clipboard_target(const char* text, int clipboard)
 	Atom selection;
 
 	SDL_VERSION(&wminfo.version);
-	if (SDL_GetWMInfo(&wminfo) && (wminfo.subsystem == SDL_SYSWM_X11))
+	if (SDL_GetWindowWMInfo(el_gl_window, &wminfo) && wminfo.subsystem == SDL_SYSWM_X11)
 	{
 		wminfo.info.x11.lock_func();
 
@@ -333,7 +333,7 @@ void finishpaste(XSelectionEvent event)
 	SDL_SysWMinfo wminfo;
 
 	SDL_VERSION(&wminfo.version);
-	if (SDL_GetWMInfo(&wminfo) && wminfo.subsystem==SDL_SYSWM_X11)
+	if (SDL_GetWindowWMInfo(el_gl_window, &wminfo) && wminfo.subsystem == SDL_SYSWM_X11)
 	{
 		wminfo.info.x11.lock_func();
 
