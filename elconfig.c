@@ -798,17 +798,17 @@ int switch_video(int mode, int full_screen)
 
 	destroy_fbos();
 
-	if (!SDL_VideoModeOK(win_width, win_height, win_bpp, flags)) {
+/*	if (!SDL_VideoModeOK(win_width, win_height, win_bpp, flags)) {
 		LOG_TO_CONSOLE(c_red2, invalid_video_mode);
 		return 0;
-	} else {
+	} else { */
 		set_new_video_mode(full_screen, mode);
 #ifndef MAP_EDITOR2
 		if(items_win >= 0) {
 			windows_list.window[items_win].show_handler(&windows_list.window[items_win]);
 		}
 #endif
-	}
+//	}
 	build_fbos();
 	return 1;
 }
