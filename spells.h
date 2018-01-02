@@ -47,7 +47,7 @@ extern int show_poison_count; /*!< true if showing poison counts in UI */
 
 /*!
  * \ingroup spells_window
- * \brief Checks spells to determine if theyìre castable
+ * \brief Checks spells to determine if they are castable
  *
  *      Checks castability checking reagents, sigils, mana and levels
  *
