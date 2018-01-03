@@ -1,6 +1,11 @@
-.PHONY: clean release docs
+.PHONY: clean release static gen_git_version docs
 
--include make.conf
+BUILD_DIR = ./build
+DEPS_DIR = $(BUILD_DIR)/deps
+
+DEPS_MAGIC := $(shell mkdir -p $(BUILD_DIR))
+
+-include $(BUILD_DIR)/make.conf
 
 # basic compiling and linking - rarely changed
 OPTIONS = -DLINUX -DELC $(foreach FEATURE, $(FEATURES), -D$(FEATURE)) -D_7ZIP_ST $(GIT_VERSION)
@@ -22,72 +27,58 @@ _LDFLAGS=$(XDIR) -lGL -lpthread -lstdc++
 LIBD=/usr/lib
 STATICLIBS=$(LIBD)/libSDL_net.a $(LIBD)/libSDL.a $(LIBD)/libSDL_image.a $(LIBD)/libopenal.a $(LIBD)/libvorbisfile.a $(LIBD)/libvorbis.a $(LIBD)/libogg.a $(LIBD)/libxml2.a $(LIBD)/libcal3d.a $(LIBD)/libpng.a $(LIBD)/libasound.a $(LIBD)/libaudio.a $(LIBD)/libartsc.a $(LIBD)/libesd.a $(LIBD)/libpulse-simple.a $(LIBD)/libpulse.a $(LIBD)/libaa.a $(LIBD)/libgpm.a $(LIBD)/libcurses.a $(LIBD)/libslang.a $(LIBD)/libdirectfb.a $(LIBD)/libdirect.a $(LIBD)/libfusion.a $(LIBD)/librt.a $(LIBD)/libtiff.a $(LIBD)/libjpeg.a $(LIBD)/libGLU.a $(LIBD)/libz.a
 
-# the objects we need
-ENCYCLOPEDIA_COBJ = books/fontdef.o books/parser.o books/symbol.o books/typesetter.o sort.o symbol_table.o
-MEMORY_DEBUG_COBJ = elmemory.o
-PAWN_COBJ = pawn/amx.o pawn/amxaux.o pawn/amxcons.o pawn/amxel.o \
-	pawn/amxfloat.o pawn/amxstring.o pawn/elpawn.o
-CUSTOM_UPDATE_COBJ = custom_update.o new_update.o
+# set where we will find source files
+VPATH=./src/:./src/engine/:./src/exceptions/:./src/eye_candy/:./src/fsaa/:./src/io/:./src/pawn/:./src/shader/:./src/xml/:./src/xz/
+
+# features enable/disbled in make.defaults
+#ENCYCLOPEDIA_C_SOURCE = fontdef.c parser.c symbol.c typesetter.c sort.c symbol_table.c
+MEMORY_DEBUG_C_SOURCE = elmemory.c
+PAWN_C_SOURCE = amx.c amxaux.c amxcons.c amxel.c amxfloat.c amxstring.c elpawn.c
+CUSTOM_UPDATE_C_SOURCE = custom_update.c new_update.c
 #disabled it for now, made too much trouble
-#FSAA_COBJ = fsaa/fsaa_glx.o fsaa/fsaa.o
-FSAA_COBJ = fsaa/fsaa_dummy.o fsaa/fsaa.o
-COBJS=2d_objects.o 3d_objects.o \
-	actor_scripts.o actors.o alphamap.o asc.o astrology.o \
-	bbox_tree.o books.o buddy.o buffs.o bags.o \
-	cache.o cal.o calc.o chat.o cluster.o colors.o console.o consolewin.o \
-	counters.o cursors.o dds.o ddsimage.o dialogues.o draw_scene.o eye_candy_debugwin.o \
-	el_memory.o elconfig.o elwindows.o encyclopedia.o errors.o events.o	\
-	filter.o font.o framebuffer.o frustum.o gamewin.o gl_init.o 	\
-	hud.o hud_misc_window.o hud_quickbar_window.o hud_statsbar_window.o hud_quickspells_window.o	\
-	help.o highlight.o ignore.o image_loading.o init.o interface.o items.o io/fileutil.o	\
-	io/e3d_io.o io/elc_io.o	io/map_io.o io/elpathwrapper.o io/xmlcallbacks.o \
-	io/half.o io/normal.o io/elfilewrapper.o io/unzip.o io/ioapi.o io/zip.o io/ziputil.o	\
-	keys.o knowledge.o langselwin.o lights.o list.o load_gl_extensions.o loginwin.o loading_win.o	\
-	main.o manufacture.o map.o mapwin.o	\
-	md5.o mines.o minimap.o misc.o missiles.o multiplayer.o	\
-	new_actors.o new_character.o notepad.o	\
-	openingwin.o image.o \
-	shader/noise.o shader/shader.o text_aliases.o	\
-	particles.o paste.o pathfinder.o pm_log.o	\
-	queue.o reflection.o	rules.o	sky.o	\
-	skeletons.o skills.o serverpopup.o servers.o session.o shadows.o sound.o	\
-	spells.o stats.o storage.o special_effects.o	\
-	tabs.o text.o textures.o tile_map.o timers.o translate.o trade.o	\
-	update.o url.o weather.o widgets.o makeargv.o popup.o hash.o emotes.o \
-	xz/7zCrc.o xz/7zCrcOpt.o xz/Alloc.o xz/Bra86.o xz/Bra.o xz/BraIA64.o	\
-	xz/CpuArch.o xz/Delta.o xz/LzFind.o xz/Lzma2Dec.o xz/Lzma2Enc.o	\
-	xz/LzmaDec.o xz/LzmaEnc.o xz/Sha256.o xz/Xz.o xz/XzCrc64.o xz/XzDec.o	\
-	xz/XzEnc.o	\
-	$(foreach FEATURE, $(FEATURES), $($(FEATURE)_COBJ))
-	
-CXXOBJS=achievements.o actor_init.o cal3d_wrapper.o command_queue.o \
-	context_menu.o elloggingwrapper.o engine/logging.o exceptions/extendedexception.o \
-	hud_indicators.o hud_timer.o icon_window.o io/cal3d_io_wrapper.o item_info.o item_lists.o named_colours.o \
-	optimizer.o quest_log.o select.o sendvideoinfo.o trade_log.o user_menus.o \
-	xml/xmlhelper.o eye_candy_wrapper.o \
-	engine/hardwarebuffer.o \
-	eye_candy/eye_candy.o eye_candy/math_cache.o eye_candy/effect_lamp.o \
-	eye_candy/effect_candle.o \
-	eye_candy/effect_campfire.o eye_candy/effect_fountain.o \
-	eye_candy/effect_teleporter.o eye_candy/effect_firefly.o \
-	eye_candy/effect_sword.o eye_candy/effect_summon.o \
-	eye_candy/effect_selfmagic.o eye_candy/effect_targetmagic.o \
-	eye_candy/effect_ongoing.o eye_candy/effect_impact.o \
-	eye_candy/effect_smoke.o eye_candy/effect_bag.o eye_candy/effect_cloud.o \
-	eye_candy/effect_harvesting.o eye_candy/effect_wind.o \
-	eye_candy/effect_breath.o eye_candy/effect_glow.o \
-	eye_candy/effect_mines.o eye_candy/effect_missile.o \
-	eye_candy/orbital_mover.o eye_candy/kepler_orbit.o	\
-	eye_candy/effect_staff.o \
-	$(foreach FEATURE, $(FEATURES), $($(FEATURE)_CXXOBJ))
+#FSAA_C_SOURCE = fsaa_glx.c fsaa.c
+FSAA_C_SOURCE = fsaa_dummy.c fsaa.c
+
+C_SOURCE = 2d_objects.c 3d_objects.c actor_scripts.c actors.c alphamap.c asc.c astrology.c bags.c \
+	bbox_tree.c books.c buddy.c buffs.c cache.c calc.c cal.c chat.c cluster.c colors.c \
+	console.c consolewin.c counters.c cursors.c ddsimage.c dds.c dialogues.c draw_scene.c \
+	elconfig.c el_memory.c elwindows.c emotes.c encyclopedia.c errors.c events.c \
+	eye_candy_debugwin.c filter.c font.c framebuffer.c frustum.c gamewin.c gl_init.c hash.c \
+	help.c highlight.c hud_misc_window.c hud.c hud_quickbar_window.c hud_quickspells_window.c \
+	hud_statsbar_window.c ignore.c image_loading.c image.c init.c interface.c items.c keys.c \
+	knowledge.c langselwin.c lights.c list.c load_gl_extensions.c loading_win.c loginwin.c \
+	main.c makeargv.c manufacture.c map.c mapwin.c md5.c mines.c minimap.c misc.c missiles.c \
+	multiplayer.c new_actors.c new_character.c notepad.c openingwin.c particles.c paste.c \
+	pathfinder.c pm_log.c popup.c queue.c reflection.c rules.c serverpopup.c servers.c \
+	session.c shadows.c skeletons.c skills.c sky.c sound.c special_effects.c spells.c stats.c \
+	storage.c tabs.c text_aliases.c text.c textures.c tile_map.c timers.c trade.c translate.c \
+	update.c url.c weather.c widgets.c \
+	e3d_io.c elc_io.c map_io.c elfilewrapper.c elpathwrapper.c fileutil.c half.c \
+	ioapi.c normal.c unzip.c xmlcallbacks.c zip.c ziputil.c \
+	noise.c shader.c \
+	7zCrc.c 7zCrcOpt.c Alloc.c Bra86.c Bra.c BraIA64.c CpuArch.c Delta.c LzFind.c \
+	Lzma2Dec.c Lzma2Enc.c LzmaDec.c LzmaEnc.c Sha256.c Xz.c XzCrc64.c XzDec.c XzEnc.c \
+	$(foreach FEATURE, $(FEATURES), $($(FEATURE)_C_SOURCE))
+
+CXX_SOURCE = achievements.cpp actor_init.cpp cal3d_wrapper.cpp command_queue.cpp context_menu.cpp \
+	elloggingwrapper.cpp eye_candy_wrapper.cpp hud_indicators.cpp hud_timer.cpp icon_window.cpp \
+	item_info.cpp item_lists.cpp named_colours.cpp optimizer.cpp quest_log.cpp select.cpp \
+	sendvideoinfo.cpp trade_log.cpp user_menus.cpp \
+	cal3d_io_wrapper.cpp \
+	effect_bag.cpp effect_breath.cpp effect_campfire.cpp effect_candle.cpp effect_cloud.cpp \
+	effect_firefly.cpp effect_fountain.cpp effect_glow.cpp effect_harvesting.cpp effect_impact.cpp \
+	effect_lamp.cpp effect_mines.cpp effect_missile.cpp effect_ongoing.cpp effect_selfmagic.cpp \
+	effect_smoke.cpp effect_staff.cpp effect_summon.cpp effect_sword.cpp effect_targetmagic.cpp \
+	effect_teleporter.cpp effect_wind.cpp eye_candy.cpp kepler_orbit.cpp math_cache.cpp orbital_mover.cpp \
+	hardwarebuffer.cpp logging.cpp \
+	extendedexception.cpp \
+	xmlhelper.cpp \
+	$(foreach FEATURE, $(FEATURES), $($(FEATURE)_CXX_SOURCE))
 
 OBJS=$(COBJS) $(CXXOBJS)
-HEADER_DIRS = . books eye_candy io pawn fsaa engine xz
-
-
-DEP_FILES=$(foreach OBJ, $(COBJS), .deps/$(OBJ).P) $(foreach OBJ, $(CXXOBJS), .deps/$(OBJ).P)
-#(shell echo $OBJ |sed s/\.o/\.P/))
-
+COBJS = $(C_SOURCE:%.c=$(BUILD_DIR)/%.o)
+CXXOBJS = $(CXX_SOURCE:%.cpp=$(BUILD_DIR)/%.o)
+DEP_FILES=$(foreach OBJ, $(COBJS), $(OBJ).P) $(foreach OBJ, $(CXXOBJS), $(OBJ).P)
 EXE=el.x86.linux.bin
 
 ifndef CC
@@ -107,23 +98,18 @@ $(EXE): $(OBJS)
 	@echo "  LINK $(EXE)"
 	@$(LINK) $(CFLAGS) -o $(EXE) $(OBJS) $(LDFLAGS)
 
-#recompile on Makefile or conf change
-#.depend $(OBJS): Makefile.linux make.conf
-
-DEPS_MAGIC := $(shell mkdir .deps .deps/io .deps/shader .deps/eye_candy .deps/exceptions .deps/xz .deps/xml .deps/fsaa .deps/engine > /dev/null 2>&1 || :)
-
-$(COBJS): %.o: %.c Makefile.linux make.conf
-	@echo "  CC   $@"
-	@if $(CC) $(CFLAGS) -MT '$@' -MD -MP -MF '.deps/$@.pp' -c $< -o $@; then \
-		mv ".deps/$@.pp" ".deps/$@.P"; \
-	else rm -f ".deps/$@.pp"; exit 1; \
+$(COBJS): $(BUILD_DIR)/%.o: %.c Makefile.linux $(BUILD_DIR)/make.conf
+	@echo "  CC   $<"
+	@if $(CC) $(CFLAGS) -MT '$@' -MD -MP -MF '$@.pp' -c $< -o $@; then \
+		mv "$@.pp" "$@.P"; \
+	else rm -f "$(DEPS_DIR)/$@.pp"; exit 1; \
 	fi
 
-$(CXXOBJS): %.o: %.cpp Makefile.linux make.conf
-	@echo "  CXX  $@"
-	@if $(CXX) $(CXXFLAGS) -MT '$@' -MD -MP -MF '.deps/$@.pp' -c $< -o $@; then \
-		mv ".deps/$@.pp" ".deps/$@.P"; \
-	else rm -f ".deps/$@.pp"; exit 1; \
+$(CXXOBJS): $(BUILD_DIR)/%.o: %.cpp Makefile.linux $(BUILD_DIR)/make.conf
+	@echo "  CXX  $<"
+	@if $(CXX) $(CXXFLAGS) -MT '$@' -MD -MP -MF '$@.pp' -c $< -o $@; then \
+		mv "$@.pp" "$@.P"; \
+	else rm -f "$@.pp"; exit 1; \
 	fi
 
 release:
@@ -133,13 +119,14 @@ static:
 	@$(MAKE) -f Makefile.linux 'CFLAGS=$(_CFLAGS)' 'CXXFLAGS=$(_CXXFLAGS)' 'LDFLAGS=$(_LDFLAGS)' 'OBJS=$(OBJS) $(STATICLIBS)'
 
 clean:
-	rm -f $(OBJS) $(EXE) 
+	rm -f $(OBJS) $(EXE) $(DEP_FILES) $(BUILD_DIR)/make.conf $(BUILD_DIR)/git_version
+	rmdir --ignore-fail-on-non-empty $(BUILD_DIR)/
 
-docs:	
+docs:
 	cd docs && doxygen Doxyfile
 
 # define GIT_VERSION if we have a version file
-VTMP := $(shell [ -r git_version ] && cat git_version)
+VTMP := $(shell [ -r $(BUILD_DIR)/git_version ] && cat $(BUILD_DIR)/git_version)
 ifdef VTMP
 GIT_VERSION = -DGIT_VERSION=\"$(VTMP)\"
 endif
@@ -147,15 +134,11 @@ endif
 # generate the git_version file
 VERSION = $(shell git describe --abbrev=4 --dirty --always)
 gen_git_version:
-	@echo -n "$(VERSION)" > git_version
+	@echo -n "$(VERSION)" > $(BUILD_DIR)/git_version
 	@echo "New version file: $(VERSION)"
-	@rm -f console.o $(EXE) 
+	@rm -f $(BUILD_DIR)/console.o $(EXE)
 
-.depend: $(foreach HEADER_DIR, $(HEADER_DIRS), $(wildcard $(HEADER_DIR)/*.h))
-	$(CC) $(CFLAGS) -MM $(patsubst %.o, %.c, $(COBJS)) >.depend
-	$(CXX) $(CXXFLAGS) -MM $(patsubst %.o, %.cpp, $(CXXOBJS)) >>.depend
-
-make.conf: make.defaults
+$(BUILD_DIR)/make.conf: make.defaults
 	@if (test -f $@ -a '$(UPDATE_CONF)' != 'yes'); \
 	then \
 		echo '**'; \
@@ -167,7 +150,7 @@ make.conf: make.defaults
 		cp $< $@; \
 	fi
 
-pawn_scripts/features.inc: make.conf
+pawn_scripts/features.inc: $(BUILD_DIR)/make.conf
 	echo "#if defined _features_included" > $@; \
 	echo "\t#endinput" >> $@; \
 	echo "#endif" >> $@; \
