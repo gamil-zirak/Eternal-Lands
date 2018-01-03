@@ -1,7 +1,6 @@
 .PHONY: clean release static gen_git_version docs
 
 BUILD_DIR = ./build
-DEPS_DIR = $(BUILD_DIR)/deps
 
 DEPS_MAGIC := $(shell mkdir -p $(BUILD_DIR))
 
@@ -28,7 +27,7 @@ LIBD=/usr/lib
 STATICLIBS=$(LIBD)/libSDL_net.a $(LIBD)/libSDL.a $(LIBD)/libSDL_image.a $(LIBD)/libopenal.a $(LIBD)/libvorbisfile.a $(LIBD)/libvorbis.a $(LIBD)/libogg.a $(LIBD)/libxml2.a $(LIBD)/libcal3d.a $(LIBD)/libpng.a $(LIBD)/libasound.a $(LIBD)/libaudio.a $(LIBD)/libartsc.a $(LIBD)/libesd.a $(LIBD)/libpulse-simple.a $(LIBD)/libpulse.a $(LIBD)/libaa.a $(LIBD)/libgpm.a $(LIBD)/libcurses.a $(LIBD)/libslang.a $(LIBD)/libdirectfb.a $(LIBD)/libdirect.a $(LIBD)/libfusion.a $(LIBD)/librt.a $(LIBD)/libtiff.a $(LIBD)/libjpeg.a $(LIBD)/libGLU.a $(LIBD)/libz.a
 
 # set where we will find source files
-VPATH=./src/:./src/engine/:./src/exceptions/:./src/eye_candy/:./src/fsaa/:./src/io/:./src/pawn/:./src/shader/:./src/xml/:./src/xz/
+VPATH=./src/ ./src/engine/ ./src/exceptions/ ./src/eye_candy/ ./src/fsaa/ ./src/io/ ./src/pawn/ ./src/shader/ ./src/xml/ ./src/xz/
 
 # features enable/disbled in make.defaults
 #ENCYCLOPEDIA_C_SOURCE = fontdef.c parser.c symbol.c typesetter.c sort.c symbol_table.c
@@ -102,7 +101,7 @@ $(COBJS): $(BUILD_DIR)/%.o: %.c Makefile.linux $(BUILD_DIR)/make.conf
 	@echo "  CC   $<"
 	@if $(CC) $(CFLAGS) -MT '$@' -MD -MP -MF '$@.pp' -c $< -o $@; then \
 		mv "$@.pp" "$@.P"; \
-	else rm -f "$(DEPS_DIR)/$@.pp"; exit 1; \
+	else rm -f "$@.pp"; exit 1; \
 	fi
 
 $(CXXOBJS): $(BUILD_DIR)/%.o: %.cpp Makefile.linux $(BUILD_DIR)/make.conf
