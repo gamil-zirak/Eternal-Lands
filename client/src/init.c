@@ -475,8 +475,13 @@ void save_bin_cfg()
 		cfg_mem.items_menu_y=items_menu_y;
 	}
 
-	cfg_mem.ground_items_menu_x = ground_items_menu_x;
-	cfg_mem.ground_items_menu_y = ground_items_menu_y;
+	if(ground_items_win >= 0) {
+		cfg_mem.ground_items_menu_x = windows_list.window[ground_items_win].cur_x;
+		cfg_mem.ground_items_menu_y = windows_list.window[ground_items_win].cur_y;
+	} else {
+		cfg_mem.ground_items_menu_x = ground_items_menu_x;
+		cfg_mem.ground_items_menu_y = ground_items_menu_y;
+	}
 	cfg_mem.ground_items_menu_x |= ground_items_visible_grid_cols << 16;
 	cfg_mem.ground_items_menu_y |= ground_items_visible_grid_rows << 16;
 
@@ -663,7 +668,6 @@ void init_e3d_cache()
 	cache_e3d = cache_init("E3d cache", 1500, NULL);	//no aut- free permitted
 	cache_set_compact(cache_e3d, &free_e3d_va);	// to compact, free VA arrays
 	cache_set_time_limit(cache_e3d, 5*60*1000);
-	cache_set_size_limit(cache_e3d, 8*1024*1024);
 }
 
 #ifndef FASTER_MAP_LOAD
@@ -1001,12 +1005,12 @@ void init_stuff()
 #ifdef NEW_SOUND
 	// Try to turn the sound on now so we have it for the login window
 	if (have_sound_config)
-		turn_sound_on();
-	else
 	{
-		sound_on = 0;
-		turn_sound_off();
+		if (sound_on)
+			turn_sound_on();
 	}
+	else
+		turn_sound_off();
 #endif // NEW_SOUND
 
 	// display something
