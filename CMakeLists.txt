@@ -104,6 +104,7 @@ add_definitions(
 #	-DUID							# use unique ID sent from server for custom looks. (INCOMPLETE)
 #	-DUSE_ACTORS_OPTIMIZER			# Enables actor optimizations
 #	-DWRITE_XML						# dangerous to use, will wipe out some XML files that are part of the main game download
+	-DCONFIGDIR=".elcmult"
 )
 
 # Set the path from the git root to the sours files
